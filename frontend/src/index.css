@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+/* NanumSquareNeo — 각 weight 슬롯을 한 단계 위 파일로 매핑
+   300(Light) → bRg(Regular)
+   400(Normal) → cBd(Bold)
+   700(Bold)   → dEb(ExtraBold)
+   800/900     → eHv(Heavy) */
+@font-face {
+  font-family: 'NanumSquareNeo';
+  src: url('/fonts/NanumSquareNeo-bRg.ttf') format('truetype');
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NanumSquareNeo';
+  src: url('/fonts/NanumSquareNeo-cBd.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NanumSquareNeo';
+  src: url('/fonts/NanumSquareNeo-dEb.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NanumSquareNeo';
+  src: url('/fonts/NanumSquareNeo-eHv.ttf') format('truetype');
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NanumSquareNeo';
+  src: url('/fonts/NanumSquareNeo-eHv.ttf') format('truetype');
+  font-weight: 900;
+  font-display: swap;
+}
+
+@theme {
+  /* ── TeamCook 색상 ── */
+  --color-ink: #1A1A1A;
+  --color-body: #6B7B8F;
+  --color-hairline: #C9DAEA;
+  --color-canvas: #FAFBFC;
+  --color-canvas-dark: #485671;   /* 로고 배경 네이비 */
+  --color-surface: #EEF5FC;
+  --color-surface-dark-soft: #3a4760;  /* canvas-dark보다 살짝 어두운 레이어 */
+  --color-on-dark: #FAFBFC;
+
+  --color-primary: #4D9EED;       /* 블루 — "Team" 색상 */
+  --color-secondary: #FABF4B;     /* 앰버 — "C", "K" 색상 */
+  --color-accent: #485671;
+
+  --color-accent-orange: #4D9EED;
+  --color-accent-amber: #FABF4B;
+  --color-accent-periwinkle: #4D9EED;
+  --color-accent-mint: #4DC2A8;   /* 틸 — "o" 색상 */
+  --color-accent-magenta: #FABF4B;
+
+  --radius-xs: 3.25px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+
+  --font-display: "NanumSquareNeo", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "NanumSquareNeo", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  background-color: #FAFBFC;
+  color: #1A1A1A;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 두께 유틸 — Tailwind font-weight 클래스와 자동 매핑됨
+   font-light(300) font-normal(400) font-bold(700)
+   font-extrabold(800) font-black(900) */
+
+.gradient-brand {
+  background: linear-gradient(135deg, #4D9EED 0%, #4DC2A8 50%, #FABF4B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-brand-bg {
+  background: linear-gradient(135deg, #4D9EED 0%, #4DC2A8 50%, #FABF4B 100%);
+}
