@@ -6,10 +6,10 @@ export default function Navbar({ currentStep }) {
   const navigate = useNavigate()
 
   return (
-    <nav className="bg-canvas-dark text-on-dark px-8 py-4 flex items-center justify-between border-b border-[rgba(255,255,255,0.06)]">
+    <nav className="bg-white text-ink px-8 py-4 flex items-center justify-between border-b border-hairline">
       <button onClick={() => navigate('/')} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
         <img src="/TeamCook Icon.png" alt="" className="h-6 w-auto" />
-        <img src="/TeamCooK Logo.png" alt="TeamCooK" className="h-5 w-auto" />
+        <img src="/TeamCooK Logo.png" alt="TeamCooK" className="h-4 w-auto" />
       </button>
       {currentStep > 0 && (
         <div className="flex items-center gap-1">
@@ -20,10 +20,10 @@ export default function Navbar({ currentStep }) {
             return (
               <div key={step} className="flex items-center gap-1">
                 <div className={`flex items-center gap-1.5 px-3 py-1 rounded-sm text-xs ${
-                  active ? 'bg-[rgba(77,158,237,0.2)] text-on-dark' : done ? 'text-[#9ca3af]' : 'text-[#6b7280]'
+                  active ? 'bg-[rgba(46,204,135,0.12)] text-ink' : done ? 'text-body' : 'text-body/50'
                 }`}>
                   <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                    done ? 'bg-accent-mint text-ink' : active ? 'bg-primary text-on-dark' : 'bg-surface-dark-soft text-[#9ca3af]'
+                    done ? 'bg-primary text-white' : active ? 'bg-primary text-white' : 'bg-hairline text-body'
                   }`}>{done ? '✓' : step}</span>
                   <span className="hidden sm:block">{label}</span>
                 </div>

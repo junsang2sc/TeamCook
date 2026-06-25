@@ -2,9 +2,9 @@ export default function Button({ children, variant = 'primary', size = 'md', cla
   const base = 'inline-flex items-center justify-center font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
 
   const variants = {
-    primary: 'bg-primary text-on-dark hover:bg-[#CF5625]',
-    mint: 'bg-accent-mint text-ink hover:bg-[#8EC98A]',
-    ghost: 'bg-surface-dark-soft text-on-dark hover:bg-[#4a4a4a]',
+    primary: 'bg-primary text-white hover:bg-accent-coral',
+    mint: 'bg-primary text-white hover:bg-accent-coral',
+    ghost: 'bg-muted text-ink hover:bg-muted-dark',
     outline: 'bg-canvas text-ink border border-[rgba(0,0,0,0.12)] hover:bg-surface',
     danger: 'bg-[#dc2626] text-white hover:bg-[#b91c1c]',
   }

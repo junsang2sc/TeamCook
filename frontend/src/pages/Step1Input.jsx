@@ -203,8 +203,8 @@ export default function Step1Input() {
 
         {/* Errors */}
         {errors.length > 0 && (
-          <div className="mb-4 p-4 bg-[#FDF0E8] border border-[#E8632A]/20 rounded-md space-y-1">
-            <p className="text-xs font-mono font-medium text-accent-orange uppercase tracking-wider mb-2">
+          <div className="mb-4 p-4 bg-accent-coral-tint border border-accent-coral/20 rounded-md space-y-1">
+            <p className="text-xs font-mono font-medium text-accent-coral-dark uppercase tracking-wider mb-2">
               파싱 오류 — 수정 후 다시 업로드해주세요
             </p>
             {errors.map((e, i) => <p key={i} className="text-sm text-[#7A2A0F]">• {e}</p>)}

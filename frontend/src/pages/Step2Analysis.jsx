@@ -130,7 +130,7 @@ export default function Step2Analysis() {
             <WhiskLoader fps={12} size={160} />
             <div className="text-center space-y-1">
               {LOADING_STEPS.map((s, i) => (
-                <p key={s} className={`text-sm transition-all ${i <= loadingStep ? 'text-ink font-medium' : 'text-[#d1d5db]'}`}>
+                <p key={s} className={`text-sm transition-all ${i <= loadingStep ? 'text-ink font-medium' : 'text-muted-dark'}`}>
                   {i < loadingStep ? '✓ ' : i === loadingStep ? '› ' : '  '}{s}
                 </p>
               ))}
@@ -307,8 +307,8 @@ export default function Step2Analysis() {
                     return (
                       <div key={team.id} className="flex items-center gap-3">
                         <span className="text-sm w-24 truncate">{team.name}</span>
-                        <div className="flex-1 h-2 bg-[#f3f4f6] rounded-full overflow-hidden">
-                          <div className="h-full bg-accent-magenta" style={{ width: `${(score / max) * 100}%` }} />
+                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-accent-coral" style={{ width: `${(score / max) * 100}%` }} />
                         </div>
                         <span className="text-xs font-mono text-body w-8 text-right">{score}</span>
                       </div>
@@ -335,7 +335,7 @@ function InsightCard({ title, icon, children, accent = 'orange' }) {
     <div className="border border-[rgba(0,0,0,0.08)] rounded-md p-6">
       <div className="flex items-center gap-2">
         <span className={`font-mono ${iconColor[accent] ?? 'text-accent-orange'}`}>{icon}</span>
-        <h2 className="text-base font-medium text-ink">{title}</h2>
+        <h2 className="text-base font-semibold text-ink">{title}</h2>
       </div>
       {children}
     </div>
@@ -375,7 +375,7 @@ function SkillRarityCard({ skills, skillRarity }) {
       <div className="px-6 pt-5 pb-0">
         <div className="flex items-center gap-2 mb-4">
           <span className="font-mono text-accent-orange">◉</span>
-          <h2 className="text-base font-medium text-ink">스킬 희귀도 맵</h2>
+          <h2 className="text-base font-semibold text-ink">스킬 희귀도 맵</h2>
           {hasRare && <Badge variant="orange">⚠ 희귀 {counts.rare}개</Badge>}
           <span className="ml-auto text-xs text-body">{skills.length}개 스킬</span>
         </div>
@@ -384,19 +384,29 @@ function SkillRarityCard({ skills, skillRarity }) {
         <div className="flex gap-0 border-b border-[rgba(0,0,0,0.08)]">
           {RARITY_TABS.map(({ key, label }) => {
             const count = key === 'all' ? skills.length : counts[key]
+            const tabColor = {
+              all: 'border-ink text-ink',
+              rare: 'border-accent-coral text-accent-coral-dark',
+              normal: 'border-accent-yellow text-accent-yellow-dark',
+              common: 'border-primary text-primary-dark',
+            }
+            const badgeBg = {
+              all: 'bg-muted text-body',
+              rare: 'bg-accent-coral-tint text-accent-coral-dark',
+              normal: 'bg-accent-yellow-tint text-accent-yellow-dark',
+              common: 'bg-primary-tint text-primary-dark',
+            }
             return (
               <button
                 key={key}
                 onClick={() => setActiveRarity(key)}
                 className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px cursor-pointer ${
-                  activeRarity === key
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-body hover:text-ink'
+                  activeRarity === key ? tabColor[key] : 'border-transparent text-body hover:text-ink'
                 }`}
               >
                 {label}
                 <span className={`text-xs font-mono px-1.5 py-0.5 rounded-sm ${
-                  activeRarity === key ? 'bg-primary/10 text-primary' : 'bg-[#f3f4f6] text-body'
+                  activeRarity === key ? badgeBg[key] : 'bg-muted text-body'
                 }`}>
                   {count}
                 </span>
@@ -414,11 +424,14 @@ function SkillRarityCard({ skills, skillRarity }) {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {filtered.map((s) => {
               const rarity = skillRarity?.[s.id] || { level: 'normal', holderCount: 0 }
-              const variantMap = { rare: 'orange', normal: 'neutral', common: 'mint' }
+              const variantMap = { rare: 'rare', normal: 'normal', common: 'common' }
+              const cardBg = {
+                rare: 'border-accent-coral/30 bg-accent-coral-tint',
+                normal: 'border-accent-yellow/60 bg-accent-yellow-tint',
+                common: 'border-primary/30 bg-primary-tint',
+              }
               return (
-                <div key={s.id} className={`flex items-center justify-between p-3 border rounded-sm ${
-                  rarity.level === 'rare' ? 'border-primary/20 bg-[#FDF0E8]' : 'border-[rgba(0,0,0,0.08)]'
-                }`}>
+                <div key={s.id} className={`flex items-center justify-between p-3 border rounded-sm ${cardBg[rarity.level]}`}>
                   <div className="min-w-0 mr-2">
                     <div className="text-sm font-medium truncate">{s.name}</div>
                     <div className="text-xs text-body">{rarity.holderCount}명 보유</div>
@@ -434,9 +447,9 @@ function SkillRarityCard({ skills, skillRarity }) {
       {/* 하단 분포 바 */}
       <div className="px-6 pb-4">
         <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
-          <div className="bg-accent-orange" style={{ width: `${(counts.rare / skills.length) * 100}%` }} />
-          <div className="bg-[#d1d5db]" style={{ width: `${(counts.normal / skills.length) * 100}%` }} />
-          <div className="bg-accent-mint" style={{ width: `${(counts.common / skills.length) * 100}%` }} />
+          <div className="bg-accent-coral" style={{ width: `${(counts.rare / skills.length) * 100}%` }} />
+          <div className="bg-accent-yellow" style={{ width: `${(counts.normal / skills.length) * 100}%` }} />
+          <div className="bg-primary" style={{ width: `${(counts.common / skills.length) * 100}%` }} />
         </div>
         <div className="flex gap-4 mt-2">
           {['rare', 'normal', 'common'].map((k) => (
@@ -469,7 +482,7 @@ function MemberTypeCard({ members, memberTypes }) {
       <div className="px-6 pt-5 pb-0">
         <div className="flex items-center gap-2 mb-4">
           <span className="font-mono text-accent-orange">◈</span>
-          <h2 className="text-base font-medium text-ink">인재 유형 분류</h2>
+          <h2 className="text-base font-semibold text-ink">인재 유형 분류</h2>
           <span className="ml-auto text-xs text-body">{members.length}명 전체</span>
         </div>
 
@@ -488,7 +501,7 @@ function MemberTypeCard({ members, memberTypes }) {
               <span className="font-mono text-xs">{TYPE_ICON[k]}</span>
               {label}
               <span className={`text-xs font-mono px-1.5 py-0.5 rounded-sm ${
-                activeType === k ? 'bg-primary/10 text-primary' : 'bg-[#f3f4f6] text-body'
+                activeType === k ? 'bg-primary/10 text-primary' : 'bg-muted text-body'
               }`}>
                 {counts[k]}
               </span>
@@ -551,7 +564,7 @@ function SupplyDemandCard({ skills, supplyDemand }) {
     <div className="border border-[rgba(0,0,0,0.08)] rounded-md p-6">
       <div className="flex items-center gap-2 mb-1">
         <span className="font-mono text-accent-orange">◇</span>
-        <h2 className="text-base font-medium text-ink">수요-공급 불균형</h2>
+        <h2 className="text-base font-semibold text-ink">수요-공급 불균형</h2>
         {shortages.length > 0 && (
           <Badge variant="red">{shortages.length}개 부족</Badge>
         )}
@@ -592,7 +605,7 @@ function SupplyDemandCard({ skills, supplyDemand }) {
                     </span>
                   )}
                   {isSurplus && (
-                    <span className="text-xs font-mono text-[#3A7D44] bg-[#eef6ed] px-2 py-0.5 rounded-sm">
+                    <span className="text-xs font-mono text-primary-dark bg-primary-tint px-2 py-0.5 rounded-sm">
                       +{Math.abs(gap)} 여유
                     </span>
                   )}
@@ -602,33 +615,27 @@ function SupplyDemandCard({ skills, supplyDemand }) {
               {/* 공급 바 */}
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[10px] text-body font-mono w-6 text-right shrink-0">공급</span>
-                <div className="flex-1 h-5 bg-[#f3f4f6] rounded-sm overflow-hidden">
+                <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden">
                   <div
-                    className="h-full bg-accent-mint rounded-sm transition-all flex items-center justify-end pr-2"
+                    className="h-full bg-primary rounded-sm transition-all flex items-center justify-end pr-2"
                     style={{ width: `${supplyPct}%` }}
                   >
-                    {supplyPct > 15 && (
-                      <span className="text-[10px] font-mono text-[#1A5C1A] font-medium">{sd.supply}</span>
-                    )}
+                    <span className="text-[10px] font-mono text-primary-dark font-medium">{sd.supply}</span>
                   </div>
                 </div>
-                {supplyPct <= 15 && <span className="text-[10px] font-mono text-body w-3">{sd.supply}</span>}
               </div>
 
               {/* 수요 바 */}
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-body font-mono w-6 text-right shrink-0">수요</span>
-                <div className="flex-1 h-5 bg-[#f3f4f6] rounded-sm overflow-hidden">
+                <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden">
                   <div
-                    className={`h-full rounded-sm transition-all flex items-center justify-end pr-2 ${isShort ? 'bg-primary/70' : 'bg-[#d1d5db]'}`}
+                    className={`h-full rounded-sm transition-all flex items-center justify-end pr-2 ${isShort ? 'bg-accent-coral' : 'bg-accent-yellow'}`}
                     style={{ width: `${demandPct}%` }}
                   >
-                    {demandPct > 15 && (
-                      <span className="text-[10px] font-mono text-white font-medium">{sd.demand}</span>
-                    )}
+                    <span className={`text-[10px] font-mono font-medium ${isShort ? 'text-accent-coral-dark' : 'text-accent-yellow-dark'}`}>{sd.demand}</span>
                   </div>
                 </div>
-                {demandPct <= 15 && <span className="text-[10px] font-mono text-body w-3">{sd.demand}</span>}
               </div>
 
               {/* 부족 시 경고선 */}

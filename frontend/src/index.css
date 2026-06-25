@@ -45,7 +45,7 @@
 }
 
 @theme {
-  /* ── TeamCooK 색상 (연두 Key 컬러) ── */
+  /* ── TeamCooK 색상 ── */
   --color-ink: #1A1A1A;
   --color-body: #6B7B8F;
   --color-hairline: #C2EAD8;
@@ -54,11 +54,20 @@
   --color-surface-dark: #1E3A2F;
   --color-on-dark: #FAFBFC;
 
-  --color-primary: #2ECC87;       /* 민트 그린 — 버튼, CTA */
-  --color-secondary: #FABF4B;     /* 앰버 — 포인트, 경고 */
+  --color-primary: #2ECC87;         /* 민트 그린 — 버튼, CTA */
+  --color-primary-tint: #EDFAF3;    /* 그린 연한 배경 */
+  --color-primary-dark: #1A5C3A;    /* 그린 텍스트 */
 
-  --color-accent-blue: #4D9EED;   /* 기능적 색 */
-  --color-accent-amber: #FABF4B;
+  --color-accent-coral: #FFABB5;    /* 코럴 — 희귀/경고 */
+  --color-accent-coral-tint: #FFF0F2;
+  --color-accent-coral-dark: #8B3A42;
+
+  --color-accent-yellow: #FFE586;   /* 옐로우 — 보통/기능 */
+  --color-accent-yellow-tint: #FFFBE6;
+  --color-accent-yellow-dark: #7A6200;
+
+  --color-muted: #f3f4f6;           /* 비활성 배경 */
+  --color-muted-dark: #d1d5db;      /* 비활성 테두리/텍스트 */
 
   --radius-xs: 3.25px;
   --radius-sm: 4px;
@@ -87,16 +96,62 @@ body {
    font-extrabold(800) font-black(900) */
 
 .gradient-brand {
-  background: linear-gradient(135deg, #2ECC87 0%, #4D9EED 100%);
+  background: linear-gradient(135deg, #2ECC87 0%, #FFE586 50%, #FFABB5 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .gradient-brand-bg {
-  background: linear-gradient(135deg, #2ECC87 0%, #4D9EED 100%);
+  background: linear-gradient(135deg, #2ECC87 0%, #FFE586 50%, #FFABB5 100%);
 }
 
 .canvas-gradient {
-  background: linear-gradient(135deg, #FAFBFC 0%, #EDFAF3 100%);
+  background-color: #FAFBFC;
+  position: relative;
+  overflow: hidden;
+}
+
+.canvas-gradient::before,
+.canvas-gradient::after {
+  content: '';
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.canvas-gradient::before {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, #C2EAD8 0%, transparent 80%);
+  top: -100px;
+  left: -100px;
+  animation: orb1 10s ease-in-out infinite;
+}
+
+.canvas-gradient::after {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, #FFCDD2 0%, transparent 80%);
+  bottom: -100px;
+  right: -100px;
+  animation: orb2 10s ease-in-out infinite;
+}
+
+@keyframes orb1 {
+  0%   { transform: translate(0px, 0px); }
+  25%  { transform: translate(300px, 150px); }
+  50%  { transform: translate(180px, 400px); }
+  75%  { transform: translate(-80px, 250px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes orb2 {
+  0%   { transform: translate(0px, 0px); }
+  25%  { transform: translate(-250px, -120px); }
+  50%  { transform: translate(-100px, -350px); }
+  75%  { transform: translate(120px, -200px); }
+  100% { transform: translate(0px, 0px); }
 }

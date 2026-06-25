@@ -1,13 +1,16 @@
 export default function Badge({ children, variant = 'neutral', className = '' }) {
   const variants = {
-    neutral: 'bg-canvas text-ink border border-[rgba(0,0,0,0.08)]',
-    dark: 'bg-surface-dark-soft text-on-dark',
-    orange: 'bg-[#fdf0e8] text-primary border border-primary/20',
-    magenta: 'bg-[#fdf0e8] text-primary border border-primary/20',
-    periwinkle: 'bg-[#fef6e8] text-[#B8760A] border border-secondary/40',
-    mint: 'bg-[#eef6ed] text-[#3A7D44] border border-[#A8D5A2]/40',
-    red: 'bg-[#fee2e2] text-[#dc2626] border border-[#dc2626]/20',
-    amber: 'bg-[#fef6e8] text-[#B8760A] border border-secondary/40',
+    neutral:    'bg-muted text-ink border border-muted-dark/30',
+    dark:       'bg-surface-dark text-on-dark',
+    rare:       'bg-accent-coral-tint text-accent-coral-dark border border-accent-coral/40',
+    orange:     'bg-accent-coral-tint text-accent-coral-dark border border-accent-coral/40',
+    normal:     'bg-accent-yellow-tint text-accent-yellow-dark border border-accent-yellow/60',
+    periwinkle: 'bg-accent-yellow-tint text-accent-yellow-dark border border-accent-yellow/60',
+    amber:      'bg-accent-yellow-tint text-accent-yellow-dark border border-accent-yellow/60',
+    common:     'bg-primary-tint text-primary-dark border border-primary/30',
+    mint:       'bg-primary-tint text-primary-dark border border-primary/30',
+    magenta:    'bg-accent-coral-tint text-accent-coral-dark border border-accent-coral/40',
+    red:        'bg-[#fee2e2] text-[#dc2626] border border-[#dc2626]/20',
   }
 
   return (

@@ -206,7 +206,7 @@ export default function Step4Dashboard() {
               <button
                 key={team.id}
                 onClick={() => setSelectedTeam(team.id)}
-                className={`px-4 py-3 text-left border-b border-[rgba(0,0,0,0.04)] hover:bg-[#f9fafb] transition-colors ${selectedTeam === team.id ? 'bg-[#f3f4f6] border-l-2 border-l-ink' : ''}`}
+                className={`px-4 py-3 text-left border-b border-[rgba(0,0,0,0.04)] hover:bg-muted/50 transition-colors ${selectedTeam === team.id ? 'bg-muted border-l-2 border-l-ink' : ''}`}
               >
                 <div className="flex items-center gap-1.5">
                   <div className="text-sm font-medium text-ink">{team.name}</div>
@@ -260,7 +260,7 @@ export default function Step4Dashboard() {
                     if (!added.length && !removed.length) return null
                     return (
                       <div className="ml-auto flex items-center gap-3 text-xs pb-2">
-                        {added.length > 0 && <span className="text-[#3A7D44]">↑ 합류 {added.length}명</span>}
+                        {added.length > 0 && <span className="text-primary-dark">↑ 합류 {added.length}명</span>}
                         {removed.length > 0 && <span className="text-accent-orange">↓ 차출 {removed.length}명</span>}
                       </div>
                     )
@@ -318,7 +318,7 @@ export default function Step4Dashboard() {
                       <button
                         key={mid}
                         onClick={() => setPopupMember(m)}
-                        className={`flex items-center gap-3 p-3 border rounded-sm text-left w-full hover:bg-surface transition-colors cursor-pointer ${isNew ? 'border-[#3A7D44]/30 bg-[#f0fdf4]' : 'border-[rgba(0,0,0,0.08)]'}`}
+                        className={`flex items-center gap-3 p-3 border rounded-sm text-left w-full hover:bg-surface transition-colors cursor-pointer ${isNew ? 'border-primary/30 bg-primary-tint' : 'border-[rgba(0,0,0,0.08)]'}`}
                       >
                         <div className="w-8 h-8 rounded-full bg-canvas-dark text-on-dark flex items-center justify-center text-xs font-mono font-medium shrink-0">
                           {m.name.slice(0, 2)}
@@ -326,7 +326,7 @@ export default function Step4Dashboard() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-sm font-medium">{m.name}</span>
-                            {isNew && <span className="text-[10px] text-[#3A7D44] font-mono">NEW</span>}
+                            {isNew && <span className="text-[10px] text-primary-dark font-mono">NEW</span>}
                             <span className="text-xs text-body">{m.role}</span>
                             <Badge variant={TYPE_COLORS[type]}>{TYPE_LABELS[type]}</Badge>
                           </div>
@@ -336,7 +336,7 @@ export default function Step4Dashboard() {
                             {topSkills.map((s) => (
                               <span
                                 key={s.id}
-                                className="text-[10px] font-mono px-1.5 py-0.5 bg-[#f3f4f6] text-body rounded-sm border border-[rgba(0,0,0,0.06)] whitespace-nowrap"
+                                className="text-[10px] font-mono px-1.5 py-0.5 bg-muted text-body rounded-sm border border-[rgba(0,0,0,0.06)] whitespace-nowrap"
                               >
                                 {s.name} <span className="text-ink">{s.level}</span>
                               </span>
@@ -378,7 +378,7 @@ export default function Step4Dashboard() {
                     return (
                       <div key={sid} className="flex items-center gap-3">
                         <span className="text-sm w-24 truncate">{skill.name}</span>
-                        <div className="flex-1 h-2 bg-[#f3f4f6] rounded-full overflow-hidden">
+                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                           <div className={`h-full rounded-full ${covered ? 'bg-ink' : 'bg-[#dc2626]'}`} style={{ width: covered ? `${(maxLevel / 5) * 100}%` : '100%', opacity: covered ? 1 : 0.3 }} />
                         </div>
                         <span className="text-xs font-mono text-body w-12 text-right">

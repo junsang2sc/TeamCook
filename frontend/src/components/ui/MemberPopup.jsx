@@ -82,7 +82,7 @@ export default function MemberPopup({ member, skills, skillMatrix, memberType, o
                   <LevelDots level={s.level} />
                   <span className="text-xs font-mono text-body ml-1">Lv.{s.level}</span>
                   {s.category && (
-                    <span className="ml-auto text-[10px] text-body bg-[#f3f4f6] px-1.5 py-0.5 rounded-sm">{s.category}</span>
+                    <span className="ml-auto text-[10px] text-body bg-muted px-1.5 py-0.5 rounded-sm">{s.category}</span>
                   )}
                 </div>
               ))}
