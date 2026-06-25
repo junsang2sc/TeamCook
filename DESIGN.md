@@ -4,21 +4,19 @@ name: TeamCooK-design-system
 description: TeamCooK 브랜드 디자인 시스템 — 스킬 기반 팀 구성 서비스. 로고의 네 가지 색상(블루·틸·앰버·다크 네이비)을 기반으로 한 다크 히어로 밴드와 밝은 캔버스 밴드가 교차하는 구조. NanumSquareNeo 디스플레이 폰트와 모노 아이브로우 타입이 브랜드 톤을 형성한다.
 
 colors:
-  primary: "#4D9EED"
-  on-primary: "#FAFBFC"
+  primary: "#2ECC87"
+  on-primary: "#FFFFFF"
   secondary: "#FABF4B"
   ink: "#1A1A1A"
   body: "#6B7B8F"
-  hairline: "#C9DAEA"
+  hairline: "#C2EAD8"
   canvas: "#FAFBFC"
-  canvas-dark: "#485671"
-  surface: "#EEF5FC"
-  surface-dark-soft: "#3a4760"
+  canvas-gradient: "135deg, #FAFBFC 0%, #EDFAF3 100%"
+  surface: "#FFFFFF"
+  surface-dark: "#1E3A2F"
   on-dark: "#FAFBFC"
   accent-blue: "#4D9EED"
-  accent-teal: "#4DC2A8"
   accent-amber: "#FABF4B"
-  accent-navy: "#485671"
 
 typography:
   display-xxl:

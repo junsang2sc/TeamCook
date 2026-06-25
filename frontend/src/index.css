@@ -45,25 +45,20 @@
 }
 
 @theme {
-  /* ── TeamCook 색상 ── */
+  /* ── TeamCooK 색상 (연두 Key 컬러) ── */
   --color-ink: #1A1A1A;
   --color-body: #6B7B8F;
-  --color-hairline: #C9DAEA;
+  --color-hairline: #C2EAD8;
   --color-canvas: #FAFBFC;
-  --color-canvas-dark: #485671;   /* 로고 배경 네이비 */
-  --color-surface: #EEF5FC;
-  --color-surface-dark-soft: #3a4760;  /* canvas-dark보다 살짝 어두운 레이어 */
+  --color-surface: #FFFFFF;
+  --color-surface-dark: #1E3A2F;
   --color-on-dark: #FAFBFC;
 
-  --color-primary: #4D9EED;       /* 블루 — "Team" 색상 */
-  --color-secondary: #FABF4B;     /* 앰버 — "C", "K" 색상 */
-  --color-accent: #485671;
+  --color-primary: #2ECC87;       /* 민트 그린 — 버튼, CTA */
+  --color-secondary: #FABF4B;     /* 앰버 — 포인트, 경고 */
 
-  --color-accent-orange: #4D9EED;
+  --color-accent-blue: #4D9EED;   /* 기능적 색 */
   --color-accent-amber: #FABF4B;
-  --color-accent-periwinkle: #4D9EED;
-  --color-accent-mint: #4DC2A8;   /* 틸 — "o" 색상 */
-  --color-accent-magenta: #FABF4B;
 
   --radius-xs: 3.25px;
   --radius-sm: 4px;
@@ -81,7 +76,8 @@ body {
   margin: 0;
   font-family: var(--font-display);
   font-weight: 400;
-  background-color: #FAFBFC;
+  background: linear-gradient(135deg, #FAFBFC 0%, #EDFAF3 100%);
+  min-height: 100vh;
   color: #1A1A1A;
   -webkit-font-smoothing: antialiased;
 }
@@ -91,12 +87,16 @@ body {
    font-extrabold(800) font-black(900) */
 
 .gradient-brand {
-  background: linear-gradient(135deg, #4D9EED 0%, #4DC2A8 50%, #FABF4B 100%);
+  background: linear-gradient(135deg, #2ECC87 0%, #4D9EED 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .gradient-brand-bg {
-  background: linear-gradient(135deg, #4D9EED 0%, #4DC2A8 50%, #FABF4B 100%);
+  background: linear-gradient(135deg, #2ECC87 0%, #4D9EED 100%);
+}
+
+.canvas-gradient {
+  background: linear-gradient(135deg, #FAFBFC 0%, #EDFAF3 100%);
 }
