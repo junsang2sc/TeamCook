@@ -14,22 +14,22 @@ const CONFIG = {
   new: {
     label: '신규배치',
     badgeVariant: 'mint',
-    filename: 'TeamCook_신규배치 templet.xlsx',
-    downloadPath: '/templates/TeamCook_신규배치 templet.xlsx',
+    filename: 'TeamCook_신규배치_v3.xlsx',
+    downloadPath: '/templates/TeamCook_신규배치_v3.xlsx',
     desc: '구성원 스킬 데이터와 팀 정보를 엑셀 템플릿에 입력한 후 업로드해주세요.',
   },
   re: {
     label: '재배치',
     badgeVariant: 'periwinkle',
-    filename: 'TeamCook_재배치 templet.xlsx',
-    downloadPath: '/templates/TeamCook_재배치 templet.xlsx',
+    filename: 'TeamCook_재배치_v3.xlsx',
+    downloadPath: '/templates/TeamCook_재배치_v3.xlsx',
     desc: '구성원 스킬 데이터, 기존 팀 현황, 배치 현황을 입력한 후 업로드해주세요.',
   },
   tf: {
     label: 'TF 구성',
     badgeVariant: 'orange',
-    filename: 'TeamCook_TF구성 templet.xlsx',
-    downloadPath: '/templates/TeamCook_TF구성 templet.xlsx',
+    filename: 'TeamCook_TF구성_v3.xlsx',
+    downloadPath: '/templates/TeamCook_TF구성_v3.xlsx',
     desc: '구성원 스킬 데이터, 현재 팀 배치 현황, TF 요구 스킬을 입력한 후 업로드해주세요.',
   },
 }
@@ -145,10 +145,10 @@ export default function Step1Input() {
   })()
 
   return (
-    <div className="min-h-screen bg-canvas flex flex-col">
+    <div className="min-h-screen bg-canvas">
       <Navbar currentStep={1} />
 
-      <div className="flex-1 max-w-2xl mx-auto w-full px-6 py-12">
+      <div className="max-w-2xl mx-auto w-full px-6 py-12" style={{ marginTop: '69px' }}>
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-2">
             <Badge variant={cfg.badgeVariant}>{cfg.label}</Badge>
@@ -175,7 +175,7 @@ export default function Step1Input() {
         {/* Upload drop zone */}
         <div
           className={`relative border-2 border-dashed rounded-md p-10 text-center transition-colors mb-6
-            ${file ? 'border-ink bg-[#f9fafb]' : 'border-[rgba(0,0,0,0.15)] hover:border-[rgba(0,0,0,0.3)]'}`}
+            ${file ? 'border-ink bg-[#f9fafb]' : 'border-hairline hover:border-primary'}`}
         >
           <input
             type="file"
@@ -213,9 +213,9 @@ export default function Step1Input() {
 
         {/* Warnings */}
         {warnings.length > 0 && (
-          <div className="mb-4 p-4 bg-[#fffbeb] border border-[#d97706]/20 rounded-md space-y-1">
-            <p className="text-xs font-mono font-medium text-[#92400e] uppercase tracking-wider mb-2">주의사항</p>
-            {warnings.map((w, i) => <p key={i} className="text-sm text-[#92400e]">• {w}</p>)}
+          <div className="mb-4 p-4 bg-accent-yellow-tint border border-accent-yellow/40 rounded-md space-y-1">
+            <p className="text-xs font-mono font-medium text-accent-yellow-dark uppercase tracking-wider mb-2">주의사항</p>
+            {warnings.map((w, i) => <p key={i} className="text-sm text-accent-yellow-dark">• {w}</p>)}
           </div>
         )}
 

@@ -1,652 +1,477 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '../components/layout/Navbar'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
-import useStore from '../store/useStore'
-import { mockAnalyze, mockReplacementAnalysis } from '../api/mock'
-import { analyzeData } from '../api/index'
-import { buildMockTFResult } from '../api/tf'
 import WhiskLoader from '../components/ui/WhiskLoader'
+import useStore from '../store/useStore'
+import { mockAnalysis } from '../api/mock'
 
 const LOADING_STEPS_NEW = [
   '스킬 희귀도 계산 중...',
   '인재 유형 분류 중...',
-  '팀 간 스킬 갭 분석 중...',
-  '인사이트 생성 완료!',
+  '수요-공급 분석 중...',
+  '분석 완료!',
 ]
-const LOADING_STEPS_REPLACE = [
+const LOADING_STEPS_RE = [
   '현재 배치 현황 분석 중...',
   '차출 가능 여부 검토 중...',
   '기존 팀 리스크 계산 중...',
   '재배치 분석 완료!',
 ]
-const LOADING_STEPS_TF = [
-  '구성원 스킬 분석 중...',
-  'TF 필수 스킬 보유자 확인 중...',
-  '차출 가능 인원 검증 중...',
-  'TF 구성 분석 완료!',
-]
-
-const TYPE_LABELS = { specialist: '전문가형', t_shaped: 'T자형', generalist: '제너럴리스트형' }
-const TYPE_COLORS = { specialist: 'orange', t_shaped: 'periwinkle', generalist: 'mint' }
-const RARITY_LABELS = { rare: '희귀', normal: '보통', common: '보편' }
-const RISK_COLORS = { low: 'mint', medium: 'orange', high: 'red' }
-const RISK_LABELS = { low: '안전', medium: '주의', high: '위험' }
 
 export default function Step2Analysis() {
   const navigate = useNavigate()
-  const {
-    skills, members, skillMatrix, teams, placementMode,
-    setAnalysisResult, analysisResult, setCurrentStep,
-    flowType, placementType, replacementScenario, currentAssignment,
-    tfRequiredSkills, currentTeams,
-  } = useStore()
+  const { placementType, analysisResult, setAnalysisResult, setCurrentStep, members: storeMembers, skills: storeSkills } = useStore()
+  const isRe = placementType === 're'
 
-  const isReplacement = flowType === 'replacement'
-  const isTF = placementType === 'tf'
-  const LOADING_STEPS = isTF ? LOADING_STEPS_TF : isReplacement ? LOADING_STEPS_REPLACE : LOADING_STEPS_NEW
-
-  const [loadingStep, setLoadingStep] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [replacementAnalysis, setReplacementAnalysis] = useState(null)
-  const [tfAnalysis, setTfAnalysis] = useState(null)
+  const [loadStep, setLoadStep] = useState(0)
+  const [useRarity, setUseRarity] = useState(true)
+  const [useDifficulty, setUseDifficulty] = useState(true)
+
+  const TABS_BASE = ['인재유형', '스킬희귀도', '수요-공급', 'SPOF·병목']
+  const TABS_RE = ['기존팀현황', '매칭기회맵']
+  const tabs = isRe ? [...TABS_BASE, ...TABS_RE] : TABS_BASE
+  const [activeTab, setActiveTab] = useState(tabs[0])
+
+  const data = analysisResult || mockAnalysis
+
+  const LOADING_STEPS = isRe ? LOADING_STEPS_RE : LOADING_STEPS_NEW
 
   useEffect(() => {
-    let step = 0
-    const timer = setInterval(() => {
-      step += 1
-      setLoadingStep(step)
-      if (step >= LOADING_STEPS.length - 1) {
-        clearInterval(timer)
-        runAnalysis()
+    let i = 0
+    const iv = setInterval(() => {
+      setLoadStep(i)
+      i++
+      if (i >= LOADING_STEPS.length) {
+        clearInterval(iv)
+        setTimeout(() => {
+          setLoading(false)
+          if (!analysisResult) setAnalysisResult(mockAnalysis)
+        }, 400)
       }
-    }, 800)
-    return () => clearInterval(timer)
+    }, 500)
+    return () => clearInterval(iv)
   }, [])
 
-  const runAnalysis = async () => {
-    try {
-      // 공통: 스킬 희귀도 / 인재 유형 / SPOF 분석
-      const payload = {
-        members: members.map((m) => ({ id: m.id, name: m.name, role: m.role, experience: m.experience || 0, gender: m.gender })),
-        skills: skills.map((s) => ({ id: s.id, name: s.name, category: s.category, importance: s.importance })),
-        skill_matrix: Object.fromEntries(
-          members.map((m) => [m.id, Object.fromEntries(skills.map((s) => [s.id, skillMatrix[m.id]?.[s.id] ?? 0]))])
-        ),
-        teams: teams.map((t) => ({ id: t.id, name: t.name, required_skills: t.requiredSkills, size: t.size })),
-        placement_mode: placementMode,
-      }
-      let result
-      try {
-        result = await analyzeData(payload)
-      } catch {
-        result = mockAnalyze({ members, skills, skillMatrix, teams, placementMode })
-      }
-      setAnalysisResult(result)
-
-      // 재배치 전용: 차출 가능 여부 분석
-      if (isReplacement) {
-        const ra = mockReplacementAnalysis({ members, skills, skillMatrix, teams, currentAssignment, replacementScenario })
-        setReplacementAnalysis(ra)
-      }
-      // TF 전용: 차출 가능 인원 + 스킬 커버리지 분석
-      if (isTF) {
-        const ta = buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills })
-        setTfAnalysis(ta)
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleNext = () => {
-    setCurrentStep(3)
-    navigate('/step/3')
-  }
-
-  const r = analysisResult
-
   return (
-    <div className="min-h-screen bg-canvas flex flex-col">
+    <div className="min-h-screen bg-canvas">
       <Navbar currentStep={2} />
-      <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
-        <div className="mb-8 flex items-start justify-between">
-          <div>
+      {loading ? (
+        <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 69px)', marginTop: '69px' }}>
+          <LoadingView loadStep={loadStep} steps={LOADING_STEPS} />
+        </div>
+      ) : (
+        <div className="flex overflow-hidden relative" style={{ height: 'calc(100vh - 69px)', marginTop: '69px' }}>
+          {/* 메인 콘텐츠 — 우측 사이드바 너비만큼 오른쪽 여백 */}
+          <main className="flex-1 overflow-auto" style={{ marginRight: '280px' }}>
+            <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
+            <div className="p-6">
+              {activeTab === '인재유형' && <MemberTypeTab data={data} members={storeMembers} />}
+              {activeTab === '스킬희귀도' && <SkillRarityTab data={data} skills={storeSkills} />}
+              {activeTab === '수요-공급' && <SupplyDemandTab data={data} skills={storeSkills} />}
+              {activeTab === 'SPOF·병목' && <SpofTab data={data} skills={storeSkills} />}
+              {activeTab === '기존팀현황' && <ExistingTeamTab data={data} />}
+              {activeTab === '매칭기회맵' && <MatchingMapTab data={data} />}
+            </div>
+          </main>
+          {/* 우측 fixed 사이드바 */}
+          <OptionsPanel
+            useRarity={useRarity} setUseRarity={setUseRarity}
+            useDifficulty={useDifficulty} setUseDifficulty={setUseDifficulty}
+            onNext={() => { setCurrentStep(3); navigate('/step/3') }}
+            onBack={() => navigate('/step/1')}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LoadingView({ loadStep, steps }) {
+  return (
+    <div className="flex flex-col items-center gap-8">
+      <WhiskLoader fps={12} size={160} />
+      <div className="text-center space-y-1.5">
+        {steps.map((s, i) => (
+          <p key={s} className={`text-sm transition-all ${i < loadStep ? 'text-primary font-medium' : i === loadStep ? 'text-ink font-medium' : 'text-muted-dark'}`}>
+            {i < loadStep ? '✓ ' : i === loadStep ? '› ' : '  '}{s}
+          </p>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function OptionsPanel({ useRarity, setUseRarity, useDifficulty, setUseDifficulty, onNext, onBack }) {
+  return (
+    <aside className="fixed right-0 top-[69px] bottom-0 w-[280px] border-l border-hairline bg-surface flex flex-col z-10">
+      <div className="p-5 border-b border-hairline">
+        <h3 className="text-xs font-mono font-medium text-body uppercase tracking-wider mb-4">분석 옵션</h3>
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={useRarity} onChange={e => setUseRarity(e.target.checked)}
+              className="w-4 h-4" style={{ accentColor: '#2ECC87' }} />
+            <span className="text-sm text-ink">스킬 희귀도 반영</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={useDifficulty} onChange={e => setUseDifficulty(e.target.checked)}
+              className="w-4 h-4" style={{ accentColor: '#2ECC87' }} />
+            <span className="text-sm text-ink">팀 난이도 반영</span>
+          </label>
+        </div>
+      </div>
+      <div className="mt-auto p-5 space-y-2">
+        <Button size="lg" className="w-full" onClick={onNext}>배치 조건 설정 →</Button>
+        <Button variant="outline" size="sm" className="w-full" onClick={onBack}>← 데이터 수정</Button>
+      </div>
+    </aside>
+  )
+}
+
+function TabBar({ tabs, active, onChange }) {
+  return (
+    <div className="flex border-b border-hairline bg-surface px-4">
+      {tabs.map(tab => (
+        <button key={tab} onClick={() => onChange(tab)}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${active === tab ? 'border-primary text-primary' : 'border-transparent text-body hover:text-ink'}`}>
+          {tab}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+const TYPE_VARIANT = { specialist: 'rare', t_shaped: 'normal', generalist: 'common' }
+const TYPE_LABEL = { specialist: '전문가형', t_shaped: 'T자형', generalist: '제너럴리스트형' }
+
+function classifyMemberType(memberId, skillMatrix) {
+  const scores = Object.values(skillMatrix?.[memberId] ?? {}).filter(v => v > 0)
+  if (scores.length === 0) return 'generalist'
+  const sorted = [...scores].sort((a, b) => b - a)
+  const top2Avg = sorted.slice(0, 2).reduce((a, b) => a + b, 0) / Math.min(2, sorted.length)
+  const restAvg = sorted.slice(2).length > 0
+    ? sorted.slice(2).reduce((a, b) => a + b, 0) / sorted.slice(2).length
+    : 0
+  if (top2Avg >= 2 * (restAvg || 1)) return 'specialist'
+  const mean = scores.reduce((a, b) => a + b, 0) / scores.length
+  const std = Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / scores.length)
+  if (std < 0.8) return 'generalist'
+  return 't_shaped'
+}
+
+function MemberTypeTab({ data, members }) {
+  const { skillMatrix } = useStore()
+
+  // 실제 구성원 데이터 기반으로 인재 유형 분류
+  const memberTypeMap = data.memberTypeMap || {}
+  const enrichedMembers = (members || []).map(m => ({
+    ...m,
+    type: memberTypeMap[m.id] || classifyMemberType(m.id, skillMatrix),
+  }))
+
+  const counts = enrichedMembers.reduce((acc, m) => {
+    acc[m.type] = (acc[m.type] || 0) + 1
+    return acc
+  }, {})
+
+  const pieData = [
+    { name: '전문가형', value: counts.specialist ?? 0, color: '#FFABB5' },
+    { name: 'T자형', value: counts.t_shaped ?? 0, color: '#FFE586' },
+    { name: '제너럴리스트형', value: counts.generalist ?? 0, color: '#2ECC87' },
+  ]
+
+  const [search, setSearch] = useState('')
+  const filtered = enrichedMembers.filter(m =>
+    !search || m.name.toLowerCase().includes(search.toLowerCase()) || m.id.includes(search)
+  )
+
+  return (
+    <div>
+      <div className="flex items-center gap-8 mb-6">
+        <PieChart width={200} height={200}>
+          <Pie data={pieData} cx={100} cy={100} innerRadius={60} outerRadius={90} dataKey="value">
+            {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+          </Pie>
+          <Tooltip formatter={(v, n) => [`${v}명`, n]} />
+        </PieChart>
+        <div className="space-y-2">
+          {pieData.map(d => (
+            <div key={d.name} className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm" style={{ background: d.color }} />
+              <span className="text-sm text-ink">{d.name}</span>
+              <span className="text-sm font-mono font-medium text-ink">{d.value}명</span>
+            </div>
+          ))}
+          <div className="text-xs text-body pt-1">총 {enrichedMembers.length}명</div>
+        </div>
+      </div>
+      <input
+        placeholder="이름 또는 사번 검색"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        className="mb-4 w-full max-w-xs border border-hairline rounded-sm px-3 py-1.5 text-sm text-ink focus:outline-none focus:border-primary"
+      />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+        {filtered.map(m => (
+          <div key={m.id} className="border border-hairline rounded-md p-3">
+            <div className="text-sm font-medium text-ink mb-0.5">{m.name}</div>
+            <div className="text-xs text-body mb-1">{m.id}</div>
+            <Badge variant={TYPE_VARIANT[m.type]}>{TYPE_LABEL[m.type]}</Badge>
+          </div>
+        ))}
+      </div>
+      {filtered.length === 0 && <p className="text-sm text-body">검색 결과가 없습니다.</p>}
+    </div>
+  )
+}
+
+const RARITY_LABELS = { rare: '희귀', normal: '보통', common: '보편' }
+
+function SkillRarityTab({ data, skills }) {
+  const { skillMatrix, members: storeMembers } = useStore()
+  const [filter, setFilter] = useState('all')
+
+  // 실제 파싱 데이터가 있으면 항상 실제 skillMatrix 기반으로 계산
+  const rarityMap = (() => {
+    const totalMembers = storeMembers.length || 1
+    const allSkillIds = (skills || []).map(s => s.id)
+    // 실제 스킬 데이터가 있으면 직접 계산
+    if (allSkillIds.length > 0 && Object.keys(skillMatrix || {}).length > 0) {
+      const result = {}
+      for (const sid of allSkillIds) {
+        const holderCount = Object.values(skillMatrix).filter(m => (m[sid] ?? 0) > 0).length
+        const ratio = holderCount / totalMembers
+        result[sid] = {
+          holderCount,
+          level: ratio <= 0.1 ? 'rare' : ratio >= 0.5 ? 'common' : 'normal',
+        }
+      }
+      return result
+    }
+    // fallback: analysisResult의 skillRarityMap
+    if (data.skillRarityMap && Object.keys(data.skillRarityMap).length > 0) return data.skillRarityMap
+    const result = {}
+    for (const sid of allSkillIds) {
+      const holderCount = Object.values(skillMatrix || {}).filter(m => (m[sid] ?? 0) > 0).length
+      const ratio = holderCount / totalMembers
+      result[sid] = {
+        holderCount,
+        level: ratio <= 0.1 ? 'rare' : ratio >= 0.5 ? 'common' : 'normal',
+      }
+    }
+    return result
+  })()
+
+  // 스킬명 조회
+  const skillNameMap = (skills || []).reduce((acc, s) => { acc[s.id] = s.name; return acc }, {})
+
+  const entries = Object.entries(rarityMap)
+  const filtered = filter === 'all' ? entries : entries.filter(([, v]) => v.level === filter)
+
+  const cardBg = {
+    rare: 'border-accent-coral/30 bg-accent-coral-tint',
+    normal: 'border-accent-yellow/60 bg-accent-yellow-tint',
+    common: 'border-primary/30 bg-primary-tint',
+  }
+  const badgeVariant = { rare: 'rare', normal: 'normal', common: 'common' }
+
+  return (
+    <div>
+      <div className="flex gap-1 mb-4">
+        {['all', 'rare', 'normal', 'common'].map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-3 py-1.5 text-xs rounded-sm border transition-colors ${filter === f ? 'bg-primary text-white border-primary' : 'border-hairline text-body hover:border-primary'}`}>
+            {f === 'all' ? '전체' : RARITY_LABELS[f]}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+        {filtered.map(([sid, info]) => (
+          <div key={sid} className={`flex items-center justify-between p-3 border rounded-sm ${cardBg[info.level]}`}>
+            <div>
+              <div className="text-sm font-medium text-ink">{skillNameMap[sid] || sid}</div>
+              <div className="text-xs text-body">{sid} · {info.holderCount}명 보유</div>
+            </div>
+            <Badge variant={badgeVariant[info.level]}>{RARITY_LABELS[info.level]}</Badge>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex h-2 rounded-full overflow-hidden gap-0.5">
+        <div className="bg-accent-coral" style={{ width: `${(entries.filter(([,v])=>v.level==='rare').length/Math.max(entries.length,1))*100}%` }} />
+        <div className="bg-accent-yellow" style={{ width: `${(entries.filter(([,v])=>v.level==='normal').length/Math.max(entries.length,1))*100}%` }} />
+        <div className="bg-primary" style={{ width: `${(entries.filter(([,v])=>v.level==='common').length/Math.max(entries.length,1))*100}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function SupplyDemandTab({ data, skills }) {
+  const { skillMatrix, members: storeMembers, teams: storeTeams } = useStore()
+  const skillNameMap = (skills || []).reduce((acc, s) => { acc[s.id] = s.name; return acc }, {})
+
+  // 실제 데이터로 수요-공급 계산
+  const sd = (() => {
+    const allSkillIds = (skills || []).map(s => s.id)
+    if (allSkillIds.length > 0 && storeMembers.length > 0) {
+      const result = {}
+      for (const sid of allSkillIds) {
+        const supply = Object.values(skillMatrix || {}).filter(m => (m[sid] ?? 0) > 0).length
+        // 수요: 해당 스킬을 필수로 요구하는 팀 수
+        const demand = (storeTeams || []).filter(t => (t.requiredSkills || []).includes(sid)).length
+        result[sid] = { supply, demand, gap: Math.max(0, demand - supply) }
+      }
+      return result
+    }
+    return data.supplyDemand || {}
+  })()
+
+  const entries = Object.entries(sd)
+  const maxVal = Math.max(...entries.map(([, v]) => Math.max(v.demand, v.supply)), 1)
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-5 mb-2">
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-primary" /><span className="text-xs text-body">공급 (보유 인원)</span></div>
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-accent-coral" /><span className="text-xs text-body">수요 (팀 필요 인원)</span></div>
+      </div>
+      {entries.map(([sid, info]) => {
+        const isShort = info.gap > 0
+        const supplyPct = (info.supply / maxVal) * 100
+        const demandPct = (info.demand / maxVal) * 100
+        return (
+          <div key={sid}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-sm font-medium text-ink">{skillNameMap[sid] || sid}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-body">공급 {info.supply}명 / 수요 {info.demand}명</span>
+                {isShort
+                  ? <span className="text-xs font-mono font-medium text-white bg-accent-coral px-2 py-0.5 rounded-sm">-{info.gap} 부족</span>
+                  : <span className="text-xs font-mono text-primary-dark bg-primary-tint px-2 py-0.5 rounded-sm">+{Math.abs(info.gap ?? 0)} 여유</span>
+                }
+              </div>
+            </div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-2xl font-medium text-ink">자동 분석</h1>
-              {isReplacement && <Badge variant="periwinkle">재배치</Badge>}
+              <span className="text-[10px] text-body font-mono w-6 text-right shrink-0">공급</span>
+              <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden">
+                <div className="h-full bg-primary rounded-sm" style={{ width: `${supplyPct}%` }} />
+              </div>
             </div>
-            <p className="text-sm text-body">
-              {isReplacement
-                ? '현재 배치 현황을 분석해 차출 가능 인원과 기존 팀 리스크를 파악합니다.'
-                : '데이터를 분석해 팀 구성에 필요한 인사이트를 제공합니다.'}
-            </p>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-6">
-            <WhiskLoader fps={12} size={160} />
-            <div className="text-center space-y-1">
-              {LOADING_STEPS.map((s, i) => (
-                <p key={s} className={`text-sm transition-all ${i <= loadingStep ? 'text-ink font-medium' : 'text-muted-dark'}`}>
-                  {i < loadingStep ? '✓ ' : i === loadingStep ? '› ' : '  '}{s}
-                </p>
-              ))}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-body font-mono w-6 text-right shrink-0">수요</span>
+              <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden">
+                <div className={`h-full rounded-sm ${isShort ? 'bg-accent-coral' : 'bg-accent-yellow'}`} style={{ width: `${demandPct}%` }} />
+              </div>
             </div>
           </div>
-        ) : r ? (
-          <div className="space-y-6">
-            {/* ── TF 전용 카드 ── */}
-            {isTF && tfAnalysis && (
-              <>
-                <InsightCard title="TF 필수 스킬 보유자 현황" icon="◇" accent="orange">
-                  <div className="mt-4 space-y-2">
-                    {tfRequiredSkills.map((sid) => {
-                      const skill = skills.find((s) => s.id === sid)
-                      const cov = tfAnalysis.skill_coverage?.[sid]
-                      const holderCount = cov?.holders?.length ?? 0
-                      const isSpof = holderCount <= Math.ceil(members.length * 0.1)
-                      return (
-                        <div key={sid} className="flex items-center gap-3 p-3 border border-[rgba(0,0,0,0.08)] rounded-sm">
-                          <span className="text-sm font-medium w-28 truncate">{skill?.name ?? sid}</span>
-                          <div className="flex-1">
-                            <div className="text-xs text-body">{holderCount}명 보유</div>
-                          </div>
-                          {isSpof && <Badge variant="red">⚡ SPOF</Badge>}
-                          {!cov?.fulfilled && <Badge variant="orange">보유자 없음</Badge>}
-                          {cov?.fulfilled && !isSpof && <Badge variant="mint">충분</Badge>}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </InsightCard>
-
-                <InsightCard title="차출 가능 인원 사전 검증" icon="◈" accent="periwinkle">
-                  <div className="mt-4 grid grid-cols-2 gap-3 mb-4">
-                    <div className="p-4 bg-[#f0fdf4] border border-[#059669]/20 rounded-md text-center">
-                      <div className="text-3xl font-mono font-medium text-[#059669]">{tfAnalysis.tf_members.length}</div>
-                      <div className="text-xs text-body mt-1">TF 후보 인원</div>
-                    </div>
-                    <div className="p-4 bg-[#f0f9ff] border border-accent-periwinkle/20 rounded-md text-center">
-                      <div className="text-3xl font-mono font-medium text-ink">{Object.keys(tfAnalysis.team_impact).length}</div>
-                      <div className="text-xs text-body mt-1">영향받는 기존 팀</div>
-                    </div>
-                  </div>
-                  {tfAnalysis.tf_members.length > 0 && (
-                    <div>
-                      <p className="text-xs font-mono text-body uppercase tracking-wider mb-2">TF 후보</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {tfAnalysis.tf_members.map((mid) => {
-                          const m = members.find((m) => m.id === mid)
-                          return m ? <Badge key={mid} variant="mint">{m.name}</Badge> : null
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {tfAnalysis.warnings.length > 0 && (
-                    <div className="mt-4 space-y-1">
-                      {tfAnalysis.warnings.map((w, i) => (
-                        <p key={i} className="text-sm text-accent-orange">⚠ {w.message}</p>
-                      ))}
-                    </div>
-                  )}
-                </InsightCard>
-              </>
-            )}
-
-            {/* ── 재배치 전용 카드 ── */}
-            {isReplacement && replacementAnalysis && (
-              <>
-                {/* 차출 가능 여부 */}
-                <InsightCard title="차출 가능 인원 목록" icon="◈" accent="periwinkle">
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="p-4 bg-[#f0fdf4] border border-[#059669]/20 rounded-md text-center">
-                      <div className="text-3xl font-mono font-medium text-[#059669]">{replacementAnalysis.extractable.length}</div>
-                      <div className="text-xs text-body mt-1">즉시 차출 가능</div>
-                    </div>
-                    <div className="p-4 bg-[#fff7ed] border border-[#f97316]/20 rounded-md text-center">
-                      <div className="text-3xl font-mono font-medium text-accent-orange">{replacementAnalysis.blocked.length}</div>
-                      <div className="text-xs text-body mt-1">차출 주의 (SPOF)</div>
-                    </div>
-                  </div>
-
-                  {replacementAnalysis.blocked.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <p className="text-xs font-mono text-body uppercase tracking-wider">차출 주의 인원 — SPOF 사유</p>
-                      {replacementAnalysis.blocked.map((b) => (
-                        <div key={b.memberId} className="flex items-start gap-3 p-3 bg-[#fff7ed] border border-[#f97316]/20 rounded-sm text-sm">
-                          <span className="font-medium text-ink shrink-0">{b.memberName}</span>
-                          <span className="text-body">차출 시 현재 팀에서 <strong className="text-accent-orange">"{b.soloSkillNames.join(', ')}"</strong> 스킬 공백 발생</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {replacementAnalysis.extractable.length > 0 && (
-                    <div className="mt-4">
-                      <p className="text-xs font-mono text-body uppercase tracking-wider mb-2">즉시 차출 가능</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {replacementAnalysis.extractable.map((mid) => {
-                          const m = members.find((m) => m.id === mid)
-                          return m ? <Badge key={mid} variant="mint">{m.name}</Badge> : null
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </InsightCard>
-
-                {/* 기존 팀 리스크 */}
-                {Object.keys(replacementAnalysis.currentTeamRisks).length > 0 && (
-                  <InsightCard title="기존 팀 리스크" icon="⚠" accent="orange">
-                    <div className="mt-4 space-y-3">
-                      {Object.entries(replacementAnalysis.currentTeamRisks).map(([teamId, risk]) => {
-                        const teamName = teams.find((t) => t.id === teamId)?.name ?? teamId
-                        return (
-                          <div key={teamId} className="flex items-start gap-3 p-3 border border-[rgba(0,0,0,0.08)] rounded-sm">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-sm font-medium">{teamName}</span>
-                                <Badge variant={RISK_COLORS[risk.riskLevel]}>{RISK_LABELS[risk.riskLevel]}</Badge>
-                                <span className="text-xs text-body">{risk.extractedCount}명 차출</span>
-                              </div>
-                              {risk.lostSkills.length > 0 ? (
-                                <div className="text-xs text-accent-orange">
-                                  스킬 공백 발생: {risk.lostSkills.map((s) => s.name).join(', ')}
-                                </div>
-                              ) : (
-                                <div className="text-xs text-[#059669]">차출 후에도 스킬 공백 없음</div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </InsightCard>
-                )}
-              </>
-            )}
-
-            {/* ── 공통 카드 ── */}
-
-            {/* Card 1: Skill Rarity */}
-            <SkillRarityCard skills={skills} skillRarity={r.skillRarity} />
-
-            {/* Card 2: Member Types — 탭 전환 */}
-            <MemberTypeCard members={members} memberTypes={r.memberTypes} />
-
-            {/* Card 3: Supply-Demand — 개선된 바 차트 */}
-            <SupplyDemandCard skills={skills} supplyDemand={r.supplyDemand} />
-
-            {/* Card 4: SPOF */}
-            <InsightCard title="병목 스킬 & SPOF 경고" icon="⚠">
-              {r.spofSkills?.length > 0 ? (
-                <div className="mt-4 space-y-2">
-                  <p className="text-sm text-accent-orange font-medium">보유자 1명뿐인 스킬 — 팀 배치 시 주의 필요</p>
-                  <div className="flex flex-wrap gap-2">
-                    {r.spofSkills.map((sid) => {
-                      const skill = skills.find((s) => s.id === sid)
-                      return skill ? <Badge key={sid} variant="red">⚡ {skill.name}</Badge> : null
-                    })}
-                  </div>
-                  <p className="text-xs text-body mt-2">이 스킬 보유자를 같은 팀에 배치하면 다른 팀이 커버할 수 없습니다.</p>
-                </div>
-              ) : (
-                <p className="text-sm text-body mt-4">SPOF 스킬이 없습니다. 모든 스킬이 2명 이상에게 분산되어 있습니다. ✓</p>
-              )}
-            </InsightCard>
-
-            {/* Card 5: Team Difficulty (신규배치 + different mode) */}
-            {!isReplacement && placementMode === 'different' && (
-              <InsightCard title="팀별 요구 난이도" icon="◆">
-                <div className="mt-4 space-y-2">
-                  {teams.map((team) => {
-                    const score = r.teamDifficulty?.[team.id] || 0
-                    const max = Math.max(...teams.map((t) => r.teamDifficulty?.[t.id] || 0), 1)
-                    return (
-                      <div key={team.id} className="flex items-center gap-3">
-                        <span className="text-sm w-24 truncate">{team.name}</span>
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                          <div className="h-full bg-accent-coral" style={{ width: `${(score / max) * 100}%` }} />
-                        </div>
-                        <span className="text-xs font-mono text-body w-8 text-right">{score}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </InsightCard>
-            )}
-
-            <div className="pt-4 flex justify-between">
-              <Button variant="outline" onClick={() => navigate('/step/1')}>← 데이터 수정</Button>
-              <Button size="lg" onClick={handleNext}>배치 조건 설정하기 →</Button>
-            </div>
-          </div>
-        ) : null}
-      </div>
+        )
+      })}
     </div>
   )
 }
 
-function InsightCard({ title, icon, children, accent = 'orange' }) {
-  const iconColor = { orange: 'text-accent-orange', periwinkle: 'text-accent-periwinkle', mint: 'text-accent-mint' }
-  return (
-    <div className="border border-[rgba(0,0,0,0.08)] rounded-md p-6">
-      <div className="flex items-center gap-2">
-        <span className={`font-mono ${iconColor[accent] ?? 'text-accent-orange'}`}>{icon}</span>
-        <h2 className="text-base font-semibold text-ink">{title}</h2>
-      </div>
-      {children}
-    </div>
-  )
-}
+function SpofTab({ data, skills }) {
+  const { skillMatrix, members: storeMembers } = useStore()
+  const skillNameMap = (skills || []).reduce((acc, s) => { acc[s.id] = s.name; return acc }, {})
+  const totalMembers = storeMembers.length || 1
 
-/* ── 스킬 희귀도 맵 — 탭 전환 ── */
-const RARITY_TABS = [
-  { key: 'all',    label: '전체',   badgeVariant: 'neutral' },
-  { key: 'rare',   label: '희귀',   badgeVariant: 'orange'  },
-  { key: 'normal', label: '보통',   badgeVariant: 'neutral' },
-  { key: 'common', label: '보편',   badgeVariant: 'mint'    },
-]
-const RARITY_DESC = {
-  all:    '전체 스킬의 보유 현황을 한눈에 확인합니다.',
-  rare:   '보유자가 매우 적어 팀 배치 시 주의가 필요한 스킬입니다.',
-  normal: '보유자 수가 평균 수준인 스킬입니다.',
-  common: '구성원 절반 이상이 보유한 범용 스킬입니다.',
-}
-
-function SkillRarityCard({ skills, skillRarity }) {
-  const [activeRarity, setActiveRarity] = useState('all')
-
-  const counts = Object.fromEntries(
-    ['rare', 'normal', 'common'].map((k) => [
-      k, skills.filter((s) => (skillRarity?.[s.id]?.level ?? 'normal') === k).length,
-    ])
-  )
-  const filtered = activeRarity === 'all'
-    ? skills
-    : skills.filter((s) => (skillRarity?.[s.id]?.level ?? 'normal') === activeRarity)
-
-  const hasRare = counts.rare > 0
+  // 실제 데이터로 SPOF 계산: 보유자가 1명뿐인 스킬
+  const spofList = (() => {
+    const allSkillIds = (skills || []).map(s => s.id)
+    if (allSkillIds.length > 0 && Object.keys(skillMatrix || {}).length > 0) {
+      return allSkillIds
+        .map(sid => ({
+          sid,
+          holderCount: Object.values(skillMatrix).filter(m => (m[sid] ?? 0) > 0).length,
+        }))
+        .filter(({ holderCount }) => holderCount === 1)
+    }
+    return (data.spofSkills || []).map(sid => ({ sid, holderCount: 1 }))
+  })()
 
   return (
-    <div className="border border-[rgba(0,0,0,0.08)] rounded-md overflow-hidden">
-      <div className="px-6 pt-5 pb-0">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="font-mono text-accent-orange">◉</span>
-          <h2 className="text-base font-semibold text-ink">스킬 희귀도 맵</h2>
-          {hasRare && <Badge variant="orange">⚠ 희귀 {counts.rare}개</Badge>}
-          <span className="ml-auto text-xs text-body">{skills.length}개 스킬</span>
-        </div>
-
-        {/* 탭 */}
-        <div className="flex gap-0 border-b border-[rgba(0,0,0,0.08)]">
-          {RARITY_TABS.map(({ key, label }) => {
-            const count = key === 'all' ? skills.length : counts[key]
-            const tabColor = {
-              all: 'border-ink text-ink',
-              rare: 'border-accent-coral text-accent-coral-dark',
-              normal: 'border-accent-yellow text-accent-yellow-dark',
-              common: 'border-primary text-primary-dark',
-            }
-            const badgeBg = {
-              all: 'bg-muted text-body',
-              rare: 'bg-accent-coral-tint text-accent-coral-dark',
-              normal: 'bg-accent-yellow-tint text-accent-yellow-dark',
-              common: 'bg-primary-tint text-primary-dark',
-            }
-            return (
-              <button
-                key={key}
-                onClick={() => setActiveRarity(key)}
-                className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px cursor-pointer ${
-                  activeRarity === key ? tabColor[key] : 'border-transparent text-body hover:text-ink'
-                }`}
-              >
-                {label}
-                <span className={`text-xs font-mono px-1.5 py-0.5 rounded-sm ${
-                  activeRarity === key ? badgeBg[key] : 'bg-muted text-body'
-                }`}>
-                  {count}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="px-6 py-4">
-        <p className="text-xs text-body mb-4">{RARITY_DESC[activeRarity]}</p>
-        {filtered.length === 0 ? (
-          <p className="text-sm text-body py-4 text-center">해당하는 스킬이 없습니다.</p>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {filtered.map((s) => {
-              const rarity = skillRarity?.[s.id] || { level: 'normal', holderCount: 0 }
-              const variantMap = { rare: 'rare', normal: 'normal', common: 'common' }
-              const cardBg = {
-                rare: 'border-accent-coral/30 bg-accent-coral-tint',
-                normal: 'border-accent-yellow/60 bg-accent-yellow-tint',
-                common: 'border-primary/30 bg-primary-tint',
-              }
-              return (
-                <div key={s.id} className={`flex items-center justify-between p-3 border rounded-sm ${cardBg[rarity.level]}`}>
-                  <div className="min-w-0 mr-2">
-                    <div className="text-sm font-medium truncate">{s.name}</div>
-                    <div className="text-xs text-body">{rarity.holderCount}명 보유</div>
-                  </div>
-                  <Badge variant={variantMap[rarity.level]}>{RARITY_LABELS[rarity.level]}</Badge>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 하단 분포 바 */}
-      <div className="px-6 pb-4">
-        <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
-          <div className="bg-accent-coral" style={{ width: `${(counts.rare / skills.length) * 100}%` }} />
-          <div className="bg-accent-yellow" style={{ width: `${(counts.normal / skills.length) * 100}%` }} />
-          <div className="bg-primary" style={{ width: `${(counts.common / skills.length) * 100}%` }} />
-        </div>
-        <div className="flex gap-4 mt-2">
-          {['rare', 'normal', 'common'].map((k) => (
-            <span key={k} className="text-xs text-body">{RARITY_LABELS[k]} <strong className="text-ink">{counts[k]}개</strong></span>
+    <div>
+      {spofList.length === 0 ? (
+        <p className="text-sm text-body">SPOF 스킬이 없습니다. 모든 스킬이 2명 이상에게 분산되어 있습니다. ✓</p>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-sm text-accent-coral font-medium mb-3">보유자 1명뿐인 스킬 {spofList.length}개 — 팀 배치 시 주의 필요</p>
+          {spofList.map(({ sid, holderCount }) => (
+            <div key={sid} className="p-4 bg-accent-coral-tint border border-accent-coral/30 rounded-md flex items-center gap-3">
+              <span className="text-accent-coral text-lg">⚠</span>
+              <div>
+                <div className="text-sm font-medium text-ink">{skillNameMap[sid] || sid}</div>
+                <div className="text-xs text-body">{sid} · 보유자 {holderCount}명</div>
+              </div>
+              <Badge variant="rare" className="ml-auto">SPOF</Badge>
+            </div>
           ))}
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
-/* ── 인재 유형 분류 — 탭 전환 ── */
-const TYPE_DESCS = {
-  specialist: '특정 스킬에 깊이 있는 전문가. 핵심 기술 과제를 맡기기 적합합니다.',
-  t_shaped: '한 분야의 전문성에 폭넓은 이해를 겸비. 협업 허브 역할에 강합니다.',
-  generalist: '다양한 스킬을 고루 갖춘 범용 인재. 역할 유연성이 높습니다.',
-}
-const TYPE_ICON = { specialist: '▲', t_shaped: 'T', generalist: '●' }
-
-function MemberTypeCard({ members, memberTypes }) {
-  const [activeType, setActiveType] = useState('specialist')
-  const counts = Object.fromEntries(
-    Object.keys(TYPE_LABELS).map((k) => [k, members.filter((m) => (memberTypes?.[m.id] || 'generalist') === k).length])
-  )
-  const filtered = members.filter((m) => (memberTypes?.[m.id] || 'generalist') === activeType)
-
+function ExistingTeamTab({ data }) {
+  const teams = data.existingTeamStatus || {}
+  const riskBg = { safe: 'bg-primary', warning: 'bg-accent-yellow', danger: 'bg-accent-coral' }
+  const riskLabel = { safe: '안전', warning: '주의', danger: '위험' }
+  const riskBadge = { safe: 'common', warning: 'normal', danger: 'rare' }
   return (
-    <div className="border border-[rgba(0,0,0,0.08)] rounded-md overflow-hidden">
-      {/* 헤더 */}
-      <div className="px-6 pt-5 pb-0">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="font-mono text-accent-orange">◈</span>
-          <h2 className="text-base font-semibold text-ink">인재 유형 분류</h2>
-          <span className="ml-auto text-xs text-body">{members.length}명 전체</span>
+    <div className="space-y-4">
+      {Object.entries(teams).map(([teamId, info]) => (
+        <div key={teamId} className="border border-hairline rounded-md p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-medium text-ink">{info.name || teamId}</div>
+            <Badge variant={riskBadge[info.riskLevel]}>{riskLabel[info.riskLevel]}</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-body">커버리지</span>
+            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${riskBg[info.riskLevel]}`} style={{ width: `${info.coverage * 100}%` }} />
+            </div>
+            <span className="text-xs font-mono text-body">{Math.round(info.coverage * 100)}%</span>
+          </div>
+          {info.riskLevel === 'danger' && (
+            <p className="text-xs text-accent-coral mt-2">⚠ 이 팀은 인원 차출 시 리스크가 높습니다</p>
+          )}
         </div>
+      ))}
+    </div>
+  )
+}
 
-        {/* 탭 */}
-        <div className="flex gap-0 border-b border-[rgba(0,0,0,0.08)]">
-          {Object.entries(TYPE_LABELS).map(([k, label]) => (
-            <button
-              key={k}
-              onClick={() => setActiveType(k)}
-              className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px cursor-pointer ${
-                activeType === k
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-body hover:text-ink'
-              }`}
-            >
-              <span className="font-mono text-xs">{TYPE_ICON[k]}</span>
-              {label}
-              <span className={`text-xs font-mono px-1.5 py-0.5 rounded-sm ${
-                activeType === k ? 'bg-primary/10 text-primary' : 'bg-muted text-body'
-              }`}>
-                {counts[k]}
-              </span>
-            </button>
-          ))}
+function MatchingMapTab({ data }) {
+  const opp = data.matchingOpportunities || {}
+  return (
+    <div>
+      <p className="text-sm font-medium text-ink mb-4">
+        {opp.matchCount ?? 0}명이 {opp.teamCount ?? 0}개 팀의 스킬 부족을 채울 수 있습니다
+      </p>
+      <div className="grid grid-cols-2 gap-6">
+        <div>
+          <h4 className="text-xs font-mono text-body uppercase tracking-wider mb-3">잉여 스킬</h4>
+          <div className="space-y-1">
+            {(opp.surplusSkills || []).map(sid => (
+              <div key={sid} className="px-3 py-2 bg-primary-tint border border-primary/20 rounded-sm text-sm text-primary-dark">{sid}</div>
+            ))}
+          </div>
         </div>
-      </div>
-
-      {/* 탭 내용 */}
-      <div className="px-6 py-4">
-        <p className="text-xs text-body mb-4">{TYPE_DESCS[activeType]}</p>
-        {filtered.length === 0 ? (
-          <p className="text-sm text-body py-4 text-center">해당 유형 인원이 없습니다.</p>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {filtered.map((m) => (
-              <div key={m.id} className="flex items-center gap-3 p-3 border border-[rgba(0,0,0,0.08)] rounded-sm bg-surface">
-                <div className="w-8 h-8 rounded-full bg-canvas-dark text-on-dark flex items-center justify-center text-xs font-medium shrink-0">
-                  {m.name.slice(0, 2)}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{m.name}</div>
-                  <div className="text-xs text-body truncate">{m.role || '—'}</div>
+        <div>
+          <h4 className="text-xs font-mono text-body uppercase tracking-wider mb-3">팀별 부족 스킬</h4>
+          <div className="space-y-2">
+            {Object.entries(opp.teamGapSkills || {}).map(([teamId, skills]) => (
+              <div key={teamId} className="p-3 border border-hairline rounded-md">
+                <div className="text-xs font-medium text-body mb-1">{teamId}</div>
+                <div className="flex flex-wrap gap-1">
+                  {skills.map(sid => <Badge key={sid} variant="rare">{sid}</Badge>)}
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </div>
-
-      {/* 하단 요약 바 */}
-      <div className="px-6 pb-4">
-        <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
-          <div className="bg-accent-orange transition-all" style={{ width: `${(counts.specialist / members.length) * 100}%` }} title="전문가형" />
-          <div className="bg-accent-periwinkle transition-all" style={{ width: `${(counts.t_shaped / members.length) * 100}%` }} title="T자형" />
-          <div className="bg-accent-mint transition-all" style={{ width: `${(counts.generalist / members.length) * 100}%` }} title="제너럴리스트형" />
         </div>
-        <div className="flex gap-4 mt-2">
-          {Object.entries(TYPE_LABELS).map(([k, label]) => (
-            <span key={k} className="text-xs text-body">{label} <strong className="text-ink">{counts[k]}명</strong></span>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ── 수요-공급 불균형 — 개선된 차트 ── */
-function SupplyDemandCard({ skills, supplyDemand }) {
-  const maxVal = Math.max(
-    ...skills.map((s) => Math.max(supplyDemand?.[s.id]?.demand ?? 0, supplyDemand?.[s.id]?.supply ?? 0)),
-    1
-  )
-  const shortages = skills.filter((s) => {
-    const sd = supplyDemand?.[s.id] || {}
-    return (sd.demand || 0) > (sd.supply || 0)
-  })
-
-  return (
-    <div className="border border-[rgba(0,0,0,0.08)] rounded-md p-6">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="font-mono text-accent-orange">◇</span>
-        <h2 className="text-base font-semibold text-ink">수요-공급 불균형</h2>
-        {shortages.length > 0 && (
-          <Badge variant="red">{shortages.length}개 부족</Badge>
-        )}
-      </div>
-
-      {/* 범례 */}
-      <div className="flex items-center gap-5 mb-5 mt-2">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-accent-mint" />
-          <span className="text-xs text-body">공급 (보유 인원)</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-primary/70" />
-          <span className="text-xs text-body">수요 (팀 필요 인원)</span>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {skills.map((s) => {
-          const sd = supplyDemand?.[s.id] || { demand: 0, supply: 0 }
-          const gap = sd.demand - sd.supply
-          const supplyPct = (sd.supply / maxVal) * 100
-          const demandPct = (sd.demand / maxVal) * 100
-          const isShort = gap > 0
-          const isSurplus = gap < 0
-
-          return (
-            <div key={s.id}>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-sm font-medium">{s.name}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-body">공급 {sd.supply}명</span>
-                  <span className="text-xs text-body">/</span>
-                  <span className="text-xs font-mono text-body">수요 {sd.demand}명</span>
-                  {isShort && (
-                    <span className="text-xs font-mono font-medium text-white bg-primary px-2 py-0.5 rounded-sm">
-                      -{gap} 부족
-                    </span>
-                  )}
-                  {isSurplus && (
-                    <span className="text-xs font-mono text-primary-dark bg-primary-tint px-2 py-0.5 rounded-sm">
-                      +{Math.abs(gap)} 여유
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* 공급 바 */}
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] text-body font-mono w-6 text-right shrink-0">공급</span>
-                <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden">
-                  <div
-                    className="h-full bg-primary rounded-sm transition-all flex items-center justify-end pr-2"
-                    style={{ width: `${supplyPct}%` }}
-                  >
-                    <span className="text-[10px] font-mono text-primary-dark font-medium">{sd.supply}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 수요 바 */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-body font-mono w-6 text-right shrink-0">수요</span>
-                <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden">
-                  <div
-                    className={`h-full rounded-sm transition-all flex items-center justify-end pr-2 ${isShort ? 'bg-accent-coral' : 'bg-accent-yellow'}`}
-                    style={{ width: `${demandPct}%` }}
-                  >
-                    <span className={`text-[10px] font-mono font-medium ${isShort ? 'text-accent-coral-dark' : 'text-accent-yellow-dark'}`}>{sd.demand}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 부족 시 경고선 */}
-              {isShort && (
-                <p className="text-xs text-primary mt-1 ml-8">
-                  ⚠ {s.name} 스킬 보유자가 {gap}명 부족합니다
-                </p>
-              )}
-            </div>
-          )
-        })}
       </div>
     </div>
   )

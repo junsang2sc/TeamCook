@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Landing from './pages/Landing'
+import Archive from './pages/Archive'
 import Step1Input from './pages/Step1Input'
 import Step2Analysis from './pages/Step2Analysis'
 import Step3Conditions from './pages/Step3Conditions'
@@ -11,6 +12,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/archive" element={<Archive />} />
         <Route path="/step/1" element={<Step1Input />} />
         <Route path="/step/2" element={<Step2Analysis />} />
         <Route path="/step/3" element={<Step3Conditions />} />

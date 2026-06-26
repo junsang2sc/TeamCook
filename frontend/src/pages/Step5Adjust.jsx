@@ -1,277 +1,446 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import Navbar from '../components/layout/Navbar'
 import Button from '../components/ui/Button'
-import Badge from '../components/ui/Badge'
 import useStore from '../store/useStore'
-import { recompute } from '../api/index'
-import MemberPopup, { getTopSkills } from '../components/ui/MemberPopup'
-
-const TYPE_COLORS = { specialist: 'orange', t_shaped: 'periwinkle', generalist: 'mint' }
-const TYPE_LABELS = { specialist: '전문가형', t_shaped: 'T자형', generalist: '제너럴리스트형' }
+import { mockPlacementResult } from '../api/mock'
 
 export default function Step5Adjust() {
   const navigate = useNavigate()
   const {
-    placementResult, analysisResult,
-    members, skills, teams, skillMatrix, conditions,
-    adjustedPlacement, setAdjustedPlacement, undoAdjustment, resetAdjustment, history,
-    flowType, currentAssignment,
+    placementResult,
+    adjustedPlacement, setAdjustedPlacement,
+    undoAdjustment, resetAdjustment,
+    history,
+    skillMatrix,
+    skills,
+    teams,
   } = useStore()
 
-  // 해체 팀 제거
-  const dissolvedTeamIds = (() => {
-    if (flowType !== 'replacement') return new Set()
-    const stats = {}
-    for (const info of Object.values(currentAssignment || {})) {
-      if (!info.currentTeamId) continue
-      if (!stats[info.currentTeamId]) stats[info.currentTeamId] = { total: 0, targets: 0 }
-      stats[info.currentTeamId].total++
-      if (info.isTarget) stats[info.currentTeamId].targets++
-    }
-    return new Set(
-      Object.entries(stats)
-        .filter(([, s]) => s.total > 0 && s.total === s.targets)
-        .map(([id]) => id)
-    )
-  })()
-  const visibleTeams = teams.filter((t) => !dissolvedTeamIds.has(t.id))
-
-  const [localPlacement, setLocalPlacement] = useState(null)
-  const [pendingChanges, setPendingChanges] = useState(false)
-  const [recalcResult, setRecalcResult] = useState(null)
-  const [warning, setWarning] = useState(null)
-  const [popupMember, setPopupMember] = useState(null)
+  const base = placementResult || mockPlacementResult
+  const [board, setBoard] = useState(adjustedPlacement || base.placement || {})
+  const [search, setSearch] = useState('')
+  const [selectedMember, setSelectedMember] = useState(null) // mid
 
   useEffect(() => {
-    if (!placementResult) { navigate('/step/1'); return }
-    const initial = adjustedPlacement || placementResult.placement
-    setLocalPlacement(JSON.parse(JSON.stringify(initial)))
-  }, [])
+    setBoard(adjustedPlacement || base.placement || {})
+  }, [adjustedPlacement, base.placement])
 
-  const getMemberById = (id) => members.find((m) => m.id === id)
+  const memberNames = base.memberNames || {}
+  const teamNames = base.teamNames || {}
+  const skillNameMap = (skills || []).reduce((acc, s) => { acc[s.id] = s.name; return acc }, {})
 
-  const getTeamCoverage = (teamId, placement) => {
-    const team = teams.find((t) => t.id === teamId)
-    if (!team || !team.requiredSkills.length) return 1
-    const memberIds = placement[teamId] || []
-    const covered = team.requiredSkills.filter((sid) =>
-      memberIds.some((mid) => (skillMatrix[mid]?.[sid] ?? 0) > 0)
-    ).length
-    return covered / team.requiredSkills.length
+  // 현재 보드 기준으로 구성원이 속한 팀 ID
+  const memberTeamMap = {}
+  Object.entries(board).forEach(([tid, mids]) => mids.forEach(mid => { memberTeamMap[mid] = tid }))
+
+  // 배정 근거 스킬: 현재 팀 필수 스킬 중 본인이 보유한 것 (최대 3개)
+  const getReasonSkills = (mid, n = 3) => {
+    const tid = memberTeamMap[mid]
+    const teamInfo = (teams || []).find(t => t.id === tid)
+    const required = teamInfo?.requiredSkills || []
+    return required
+      .filter(sid => (skillMatrix?.[mid]?.[sid] ?? 0) > 0)
+      .map(sid => ({ id: sid, name: skillNameMap[sid] || sid, level: skillMatrix[mid][sid] }))
+      .sort((a, b) => b.level - a.level)
+      .slice(0, n)
   }
+
+  // 보유 스킬 전체 (레벨 내림차순)
+  const getAllSkills = (mid) =>
+    Object.entries(skillMatrix?.[mid] ?? {})
+      .filter(([, lv]) => lv > 0)
+      .map(([sid, lv]) => ({ id: sid, name: skillNameMap[sid] || sid, level: lv }))
+      .sort((a, b) => b.level - a.level)
+
+  const allMemberIds = Object.values(board).flat()
+
+  // 이름/사번/스킬명 검색 — 빈 쿼리면 빈 배열
+  const q = search.trim().toLowerCase()
+  const searchResults = !q ? [] : allMemberIds.filter(mid => {
+    const name = (memberNames[mid] || mid).toLowerCase()
+    if (name.includes(q)) return true
+    const memberSkills = Object.entries(skillMatrix?.[mid] ?? {})
+      .filter(([, lv]) => lv > 0)
+      .map(([sid]) => (skillNameMap[sid] || sid).toLowerCase())
+    return memberSkills.some(sn => sn.includes(q))
+  })
 
   const onDragEnd = (result) => {
-    if (!result.destination || !localPlacement) return
-    const src = result.source.droppableId
-    const dst = result.destination.droppableId
-    if (src === dst) return
-
-    const newPlacement = JSON.parse(JSON.stringify(localPlacement))
-    const memberId = result.draggableId
-
-    newPlacement[src] = (newPlacement[src] || []).filter((id) => id !== memberId)
-    newPlacement[dst] = [...(newPlacement[dst] || []), memberId]
-
-    // Check for condition violations (non-blocking warning)
-    const srcCov = getTeamCoverage(src, newPlacement)
-    const dstCov = getTeamCoverage(dst, newPlacement)
-    if (srcCov < 0.5) {
-      setWarning({ from: src, to: dst, newPlacement, message: `이동 후 ${teams.find((t) => t.id === src)?.name} 팀의 스킬 커버리지가 ${Math.round(srcCov * 100)}%로 낮아집니다. 계속하시겠습니까?` })
-      return
-    }
-
-    applyMove(newPlacement)
+    if (!result.destination) return
+    const { source, destination, draggableId } = result
+    if (source.droppableId === destination.droppableId) return
+    const newBoard = JSON.parse(JSON.stringify(board))
+    Object.keys(newBoard).forEach(tid => {
+      newBoard[tid] = newBoard[tid].filter(mid => mid !== draggableId)
+    })
+    if (!newBoard[destination.droppableId]) newBoard[destination.droppableId] = []
+    newBoard[destination.droppableId].splice(destination.index, 0, draggableId)
+    setBoard(newBoard)
   }
 
-  const applyMove = (newPlacement) => {
-    setLocalPlacement(newPlacement)
-    setPendingChanges(true)
-    setWarning(null)
-  }
-
-  const handleApply = async () => {
-    setAdjustedPlacement(localPlacement)
-    try {
-      const payload = { adjusted_placement: localPlacement, conditions, members, skills, teams, skillMatrix }
-      const res = await recompute(payload)
-      setRecalcResult(res)
-    } catch {
-      setRecalcResult({ conditionFulfillment: null })
+  const handleApply = () => {
+    const hasEmpty = Object.values(board).some(members => members.length === 0)
+    if (hasEmpty) {
+      const ok = window.confirm('일부 팀에 구성원이 없습니다. 계속하시겠습니까?')
+      if (!ok) return
     }
-    setPendingChanges(false)
+    setAdjustedPlacement(board)
   }
 
   const handleUndo = () => {
     undoAdjustment()
-    setLocalPlacement(adjustedPlacement || placementResult.placement)
-    setPendingChanges(false)
+    setBoard(adjustedPlacement || base.placement || {})
   }
 
   const handleReset = () => {
     resetAdjustment()
-    setLocalPlacement(JSON.parse(JSON.stringify(placementResult.placement)))
-    setPendingChanges(false)
-    setRecalcResult(null)
+    setBoard(base.placement || {})
   }
 
-  if (!localPlacement) return null
-
   return (
-    <div className="min-h-screen bg-canvas flex flex-col">
+    <div className="min-h-screen bg-canvas">
       <Navbar currentStep={5} />
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div className="flex overflow-hidden" style={{ height: 'calc(100vh - 69px)', marginTop: '69px' }}>
 
-      {/* Toolbar */}
-      <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)] flex items-center gap-3 flex-wrap">
-        <span className="text-sm text-body">구성원을 드래그해서 팀 간 이동하세요</span>
-        <div className="ml-auto flex gap-2">
-          {history.length > 0 && (
-            <Button variant="outline" size="sm" onClick={handleUndo}>↩ 실행취소</Button>
-          )}
-          <Button variant="outline" size="sm" onClick={handleReset}>알고리즘 결과로 초기화</Button>
-          {pendingChanges && (
-            <Button size="sm" onClick={handleApply}>변경사항 적용 및 재계산</Button>
-          )}
-          <Button variant="mint" size="sm" onClick={() => navigate('/step/4')}>← 결과 보기</Button>
-        </div>
-      </div>
-
-      {/* Recalc result banner */}
-      {recalcResult && recalcResult.conditionFulfillment !== null && (
-        <div className="px-6 py-2 bg-[#e8fafb] border-b border-accent-mint/30 text-sm text-[#1a5c5e] flex items-center gap-2">
-          ✓ 재계산 완료 — 전체 조건 충족률 변경 완료
-        </div>
-      )}
-
-      {/* Warning modal */}
-      {warning && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-canvas rounded-md p-6 max-w-sm w-full mx-4 shadow-xl">
-            <h3 className="text-base font-medium mb-2">⚠ 조건 위반 경고</h3>
-            <p className="text-sm text-body mb-4">{warning.message}</p>
-            <div className="flex gap-3">
-              <Button variant="primary" onClick={() => applyMove(warning.newPlacement)}>계속 이동</Button>
-              <Button variant="outline" onClick={() => setWarning(null)}>취소</Button>
+          {/* 왼쪽 사이드바: 검색 패널 */}
+          <aside className="w-[260px] border-r border-hairline bg-surface flex flex-col shrink-0">
+            <div className="p-3 border-b border-hairline space-y-2">
+              <input
+                placeholder="이름 · 사번 · 스킬명 검색"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full border border-hairline rounded-sm px-3 py-1.5 text-sm text-ink focus:outline-none focus:border-primary"
+              />
+              {q && (
+                <p className="text-[10px] text-body">{searchResults.length}명 검색됨</p>
+              )}
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Drag and drop boards */}
-      <div className="flex-1 p-6 overflow-auto">
-        <DragDropContext onDragEnd={onDragEnd}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {visibleTeams.map((team) => {
-              const memberIds = localPlacement[team.id] || []
-              const cov = getTeamCoverage(team.id, localPlacement)
-              return (
-                <div key={team.id} className="border border-[rgba(0,0,0,0.08)] rounded-md overflow-hidden">
-                  {/* Team header */}
-                  <div className="px-4 py-3 bg-[#f9fafb] border-b border-[rgba(0,0,0,0.06)]">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-ink">{team.name}</span>
-                      <span className="text-xs font-mono text-body">{memberIds.length}명</span>
-                    </div>
-                    {team.taskName && <div className="text-xs text-body truncate">{team.taskName}</div>}
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex-1 h-1 bg-[#e5e7eb] rounded-full">
-                        <div className={`h-full rounded-full ${cov >= 0.8 ? 'bg-[#059669]' : cov >= 0.5 ? 'bg-accent-periwinkle' : 'bg-[#dc2626]'}`} style={{ width: `${cov * 100}%` }} />
-                      </div>
-                      <span className="text-xs font-mono text-body">{Math.round(cov * 100)}%</span>
-                    </div>
-                  </div>
-
-                  {/* Droppable area */}
-                  <Droppable droppableId={team.id}>
-                    {(provided, snapshot) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        className={`min-h-32 p-3 space-y-2 transition-colors ${snapshot.isDraggingOver ? 'bg-[#f0f9ff]' : 'bg-canvas'}`}
-                      >
-                        {memberIds.map((mid, index) => {
-                          const m = getMemberById(mid)
-                          if (!m) return null
-                          const type = analysisResult?.memberTypes?.[mid] || 'generalist'
-                          return (
-                            <Draggable key={mid} draggableId={mid} index={index}>
-                              {(provided, snapshot) => {
-                                const topSkills = getTopSkills(mid, skillMatrix, skills, 6)
-                                return (
-                                  <div
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    {...provided.dragHandleProps}
-                                    className={`p-2 rounded-xs border select-none cursor-grab active:cursor-grabbing transition-shadow ${
-                                      snapshot.isDragging ? 'shadow-lg border-ink bg-canvas' : 'border-[rgba(0,0,0,0.08)] bg-[#f9fafb]'
-                                    }`}
-                                  >
-                                    {/* 상단: 아바타 + 이름 + 유형 + 상세 버튼 */}
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-7 h-7 rounded-full bg-canvas-dark text-on-dark flex items-center justify-center text-[10px] font-mono font-medium shrink-0">
-                                        {m.name.slice(0, 2)}
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <div className="text-xs font-medium truncate">{m.name}</div>
-                                        <Badge variant={TYPE_COLORS[type]}>{TYPE_LABELS[type]}</Badge>
-                                      </div>
-                                      <button
-                                        onPointerDown={(e) => e.stopPropagation()}
-                                        onClick={(e) => { e.stopPropagation(); setPopupMember(m) }}
-                                        className="text-[10px] text-body hover:text-ink cursor-pointer shrink-0 px-1"
-                                        title="상세 보기"
-                                      >
-                                        ⓘ
-                                      </button>
-                                    </div>
-                                    {/* 하단: 스킬 태그 */}
-                                    {topSkills.length > 0 && (
-                                      <div className="flex flex-wrap gap-1 mt-1.5">
-                                        {topSkills.map((s) => (
-                                          <span
-                                            key={s.id}
-                                            className="text-[9px] font-mono px-1 py-0.5 bg-canvas border border-[rgba(0,0,0,0.08)] text-body rounded-sm whitespace-nowrap"
-                                          >
-                                            {s.name} <span className="text-ink">{s.level}</span>
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              }}
-                            </Draggable>
-                          )
-                        })}
-                        {provided.placeholder}
-                      </div>
-                    )}
-                  </Droppable>
+            {/* 검색 결과 — 드래그 불가, 클릭으로 세부정보 확인 */}
+            <div className="flex-1 overflow-auto">
+              {!q ? (
+                <div className="p-4 text-center text-xs text-body mt-8">
+                  이름, 사번 또는 스킬명을 입력하세요
                 </div>
-              )
-            })}
-          </div>
-        </DragDropContext>
+              ) : searchResults.length === 0 ? (
+                <div className="p-4 text-center text-xs text-body mt-8">검색 결과 없음</div>
+              ) : (
+                <div className="p-2 space-y-1.5">
+                  {searchResults.map(mid => {
+                    const reasonSkills = getReasonSkills(mid, 3)
+                    const tid = memberTeamMap[mid]
+                    const tName = tid ? (teamNames[tid] || tid) : '미배정'
+                    return (
+                      <button
+                        key={mid}
+                        className="w-full text-left p-2.5 border border-hairline rounded-md bg-surface hover:bg-muted/50 transition-colors"
+                        onClick={() => setSelectedMember(mid)}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium text-sm text-ink">{memberNames[mid] || mid}</span>
+                          <span className="text-[10px] text-body bg-muted px-1.5 py-0.5 rounded-sm">{tName}</span>
+                        </div>
+                        {reasonSkills.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {reasonSkills.map(s => (
+                              <span key={s.id} className="px-1.5 py-0.5 bg-primary-tint border border-primary/20 rounded-sm text-[10px] text-primary-dark">
+                                {s.name} <span className="font-medium">Lv{s.level}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-body">팀 필수 스킬 없음</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </aside>
 
-        {/* History panel */}
-        {history.length > 0 && (
-          <div className="mt-6 border border-[rgba(0,0,0,0.08)] rounded-md p-4">
-            <h3 className="text-xs font-mono text-body uppercase tracking-wider mb-3">변경 히스토리</h3>
-            <p className="text-sm text-body">{history.length}개의 이전 상태가 저장되어 있습니다.</p>
-          </div>
-        )}
-      </div>
+          {/* 오른쪽 팀 배치 보드 */}
+          <main className="flex-1 flex flex-col overflow-hidden">
+            {/* 상단 고정 액션 바 */}
+            <div className="flex items-center justify-between bg-surface border-b border-hairline px-4 py-2.5 shrink-0">
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => navigate('/step/4')}>
+                  ← 결과로 돌아가기
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleReset}>
+                  알고리즘 결과로 초기화
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleUndo} disabled={!history || history.length === 0}>
+                  Undo
+                </Button>
+                <Button size="sm" onClick={handleApply}>변경사항 적용</Button>
+              </div>
+            </div>
 
-      {popupMember && (
-        <MemberPopup
-          member={popupMember}
-          skills={skills}
+            <div className="flex-1 overflow-auto p-3">
+              <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
+                {Object.entries(board).map(([teamId, memberIds]) => (
+                  <TeamDropZone
+                    key={teamId}
+                    teamId={teamId}
+                    memberIds={memberIds}
+                    teamNames={teamNames}
+                    skillMatrix={skillMatrix}
+                    skillNameMap={skillNameMap}
+                    teams={teams}
+                    memberNames={memberNames}
+                    getReasonSkills={getReasonSkills}
+                    onSelectMember={setSelectedMember}
+                  />
+                ))}
+              </div>
+            </div>
+          </main>
+        </div>
+      </DragDropContext>
+
+      {/* 구성원 세부정보 팝업 */}
+      {selectedMember && (
+        <MemberDetailPopup
+          memberId={selectedMember}
+          teamId={memberTeamMap[selectedMember]}
+          memberNames={memberNames}
+          teamNames={teamNames}
           skillMatrix={skillMatrix}
-          memberType={analysisResult?.memberTypes?.[popupMember.id]}
-          onClose={() => setPopupMember(null)}
+          skills={skills}
+          teams={teams}
+          board={board}
+          skillNameMap={skillNameMap}
+          onClose={() => setSelectedMember(null)}
         />
       )}
+    </div>
+  )
+}
+
+function TeamDropZone({ teamId, memberIds, teamNames, skillMatrix, skillNameMap, teams, memberNames, getReasonSkills, onSelectMember }) {
+  const [open, setOpen] = useState(true)
+  const teamInfo = (teams || []).find(t => t.id === teamId)
+  const requiredSkills = teamInfo?.requiredSkills || []
+  const coveredCount = requiredSkills.filter(sid =>
+    memberIds.some(mid => (skillMatrix?.[mid]?.[sid] ?? 0) > 0)
+  ).length
+
+  return (
+    <Droppable droppableId={teamId}>
+      {(provided, snap) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.droppableProps}
+          className={`border-2 rounded-md flex flex-col transition-colors ${snap.isDraggingOver ? 'border-primary bg-primary-tint' : 'border-hairline bg-surface'}`}
+        >
+          {/* 헤더 — 항상 표시 */}
+          <button
+            className="flex items-center justify-between px-2.5 py-2 hover:bg-muted/40 transition-colors text-left w-full"
+            onClick={() => setOpen(o => !o)}
+          >
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-ink truncate">{teamNames[teamId] || teamId}</div>
+              <div className="text-[10px] text-body">{memberIds.length}명{requiredSkills.length > 0 ? ` · 스킬 ${coveredCount}/${requiredSkills.length}` : ''}</div>
+            </div>
+            <span className="text-[10px] text-body ml-1 shrink-0">{open ? '▲' : '▼'}</span>
+          </button>
+
+          {/* 접히는 바디 */}
+          {open && (
+            <div className="px-2 pb-2 border-t border-hairline">
+              {/* 필수 스킬 */}
+              {requiredSkills.length > 0 && (
+                <div className="flex flex-wrap gap-0.5 pt-2 pb-2 border-b border-hairline mb-1.5">
+                  {requiredSkills.map(sid => {
+                    const covered = memberIds.some(mid => (skillMatrix?.[mid]?.[sid] ?? 0) > 0)
+                    return (
+                      <span
+                        key={sid}
+                        className={`px-1 py-0.5 rounded-sm text-[9px] border leading-tight ${
+                          covered
+                            ? 'bg-primary-tint border-primary/20 text-primary-dark'
+                            : 'bg-accent-coral-tint border-accent-coral/20 text-accent-coral-dark'
+                        }`}
+                      >
+                        {skillNameMap[sid] || sid}
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* 구성원 목록 */}
+              <div className="space-y-1">
+                {[...memberIds].sort((a, b) => (memberNames[a] || a).localeCompare(memberNames[b] || b, 'ko')).map((mid, i) => {
+                  const reasonSkills = getReasonSkills(mid, 2)
+                  return (
+                    <Draggable key={mid} draggableId={mid} index={i}>
+                      {(p, snap) => (
+                        <div
+                          ref={p.innerRef}
+                          {...p.draggableProps}
+                          {...p.dragHandleProps}
+                          className={`px-2 py-1.5 rounded-sm border cursor-grab ${snap.isDragging ? 'border-primary bg-primary-tint shadow-md' : 'border-hairline bg-canvas'}`}
+                          onClick={() => onSelectMember(mid)}
+                        >
+                          <div className="text-[11px] font-medium text-ink leading-tight">{memberNames[mid] || mid}</div>
+                          {reasonSkills.length > 0 && (
+                            <div className="flex flex-wrap gap-0.5 mt-0.5">
+                              {reasonSkills.map(s => (
+                                <span key={s.id} className="px-1 py-0.5 bg-muted border border-hairline rounded-sm text-[9px] text-body leading-tight">
+                                  {s.name} <span className="text-primary-dark font-medium">Lv{s.level}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </Draggable>
+                  )
+                })}
+              </div>
+              {provided.placeholder}
+            </div>
+          )}
+
+          {/* 닫힌 상태에서도 placeholder 필요 */}
+          {!open && <div style={{ display: 'none' }}>{provided.placeholder}</div>}
+        </div>
+      )}
+    </Droppable>
+  )
+}
+
+function MemberDetailPopup({ memberId, teamId, memberNames, teamNames, skillMatrix, skills, teams, board, skillNameMap, onClose }) {
+  const name = memberNames[memberId] || memberId
+  const tName = teamId ? (teamNames[teamId] || teamId) : '미배정'
+  const teamInfo = (teams || []).find(t => t.id === teamId)
+  const requiredSkills = teamInfo?.requiredSkills || []
+  const teamMemberIds = board[teamId] || []
+
+  const allSkills = Object.entries(skillMatrix?.[memberId] ?? {})
+    .filter(([, lv]) => lv > 0)
+    .map(([sid, lv]) => ({ id: sid, name: skillNameMap[sid] || sid, level: lv }))
+    .sort((a, b) => b.level - a.level)
+
+  const covers = requiredSkills.filter(sid => (skillMatrix?.[memberId]?.[sid] ?? 0) > 0)
+  const misses = requiredSkills.filter(sid => (skillMatrix?.[memberId]?.[sid] ?? 0) === 0)
+  const uniqueContribs = requiredSkills.filter(sid => {
+    const myLv = skillMatrix?.[memberId]?.[sid] ?? 0
+    if (myLv === 0) return false
+    return teamMemberIds.filter(mid => mid !== memberId && (skillMatrix?.[mid]?.[sid] ?? 0) > 0).length === 0
+  })
+
+  const levelColor = (l) => {
+    if (l >= 4) return 'bg-primary text-white'
+    if (l >= 3) return 'bg-primary/50 text-primary-dark'
+    if (l >= 2) return 'bg-accent-yellow/60 text-accent-yellow-dark'
+    return 'bg-muted text-body'
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-surface rounded-md border border-hairline shadow-xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+          <div>
+            <div className="text-base font-semibold text-ink">{name}</div>
+            <div className="text-xs text-body">{memberId} · {tName}</div>
+          </div>
+          <button onClick={onClose} className="text-body hover:text-ink text-xl leading-none px-1">×</button>
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          {/* 배정 근거 */}
+          {requiredSkills.length > 0 && (
+            <div className="px-6 py-4 border-b border-hairline space-y-3">
+              <p className="text-xs font-mono text-body uppercase tracking-wider">이 팀에 배정된 근거</p>
+
+              {covers.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-primary-dark font-mono mb-1.5">내가 커버하는 팀 필수 스킬</p>
+                  <div className="flex flex-wrap gap-1">
+                    {covers.map(sid => {
+                      const lv = skillMatrix?.[memberId]?.[sid] ?? 0
+                      const isUnique = uniqueContribs.includes(sid)
+                      return (
+                        <span key={sid} className={`flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] border ${isUnique ? 'bg-accent-yellow-tint border-accent-yellow/40 text-accent-yellow-dark' : 'bg-primary-tint border-primary/20 text-primary-dark'}`}>
+                          {isUnique ? '★' : '✓'} {skillNameMap[sid] || sid} <span className="font-medium">Lv{lv}</span>
+                        </span>
+                      )
+                    })}
+                  </div>
+                  {uniqueContribs.length > 0 && (
+                    <p className="text-[10px] text-accent-yellow-dark mt-1.5">★ 팀 내 유일 보유 — 핵심 기여자</p>
+                  )}
+                </div>
+              )}
+
+              {misses.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-body font-mono mb-1.5">미보유 팀 필수 스킬</p>
+                  <div className="flex flex-wrap gap-1">
+                    {misses.map(sid => (
+                      <span key={sid} className="px-2 py-0.5 bg-muted border border-hairline rounded-sm text-[10px] text-body">
+                        {skillNameMap[sid] || sid}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[10px] text-body leading-relaxed bg-muted px-3 py-2 rounded-sm">
+                {covers.length === requiredSkills.length
+                  ? `팀 필수 스킬 ${requiredSkills.length}개를 모두 보유합니다.`
+                  : `팀 필수 스킬 ${requiredSkills.length}개 중 ${covers.length}개 보유${uniqueContribs.length > 0 ? ` · ${uniqueContribs.length}개는 팀 내 유일` : ''}`
+                }
+              </p>
+            </div>
+          )}
+
+          {/* 보유 스킬 전체 */}
+          <div className="px-6 py-4">
+            {allSkills.length === 0 ? (
+              <p className="text-sm text-body">등록된 스킬 정보가 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs font-mono text-body uppercase tracking-wider mb-3">보유 스킬 전체 ({allSkills.length}개)</p>
+                {allSkills.map(s => {
+                  const isRequired = requiredSkills.includes(s.id)
+                  return (
+                    <div key={s.id} className={`flex items-center justify-between py-1 ${isRequired ? 'opacity-100' : 'opacity-70'}`}>
+                      <div className="flex items-center gap-1.5">
+                        {isRequired && <span className="text-primary text-[10px]">●</span>}
+                        <span className="text-sm text-ink">{s.name}</span>
+                        <span className="text-xs text-body">{s.id}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex gap-0.5">
+                          {[1,2,3,4,5].map(i => (
+                            <div key={i} className={`w-2.5 h-2.5 rounded-full ${i <= s.level ? 'bg-primary' : 'bg-muted'}`} />
+                          ))}
+                        </div>
+                        <span className={`text-xs font-mono px-1.5 py-0.5 rounded-sm ${levelColor(s.level)}`}>Lv{s.level}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {requiredSkills.length > 0 && (
+                  <p className="text-[10px] text-body pt-2 border-t border-hairline">● 팀 필수 스킬</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
