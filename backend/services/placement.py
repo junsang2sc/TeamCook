@@ -144,15 +144,19 @@ def run_placement(
                         pulp.lpSum(holds[i] * x[(i, j)] for i in range(n)) >= min_holders
                     )
 
-    # 소프트 ① 팀 스킬 평균 레벨 기준 (avg_level × 정원 이상)
+    # 소프트 ① 스킬 보유자 기준 평균 레벨 (보유자끼리만 평균)
+    # Σ level_i*x_i + sl >= avg_level × Σ h_i*x_i
+    # → Σ (level_i - avg_level*h_i)*x_i + sl >= 0
     avg_slack: dict = {}
     for j, pid in enumerate(P):
         for sid in req[pid]:
             sl = pulp.LpVariable(f"avs_{j}_{sid.replace('-','_')}", lowBound=0)
             avg_slack[(j, sid)] = sl
             prob += (
-                pulp.lpSum(lvl(people[i], sid) * x[(i, j)] for i in range(n)) + sl
-                >= avg_level * Nj[j]
+                pulp.lpSum(
+                    (lvl(people[i], sid) - avg_level * (1 if lvl(people[i], sid) > 0 else 0)) * x[(i, j)]
+                    for i in range(n)
+                ) + sl >= 0
             )
             obj -= lam_avg * sl
 
@@ -265,7 +269,7 @@ def run_placement(
             warnings.append({
                 "type": "avg_level",
                 "team_id": P[j],
-                "message": f"평균 레벨 {avg_level} 기준 미달 스킬: {', '.join(sids)}",
+                "message": f"평균 레벨 {avg_level:g} 기준 미달 스킬: {', '.join(sids)}",
             })
 
     # 인원 부족으로 커버리지 하드 제약 스킵된 스킬 경고

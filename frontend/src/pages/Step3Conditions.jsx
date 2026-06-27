@@ -89,15 +89,22 @@ export default function Step3Conditions() {
   }
 
   // 코사인 유사도 기반 적합도 계산 (프론트 자체 계산)
+  // TF: currentTeams + TF팀 자체, 재배치: currentTeams 우선, 신규: teams
+  const analysisTeams = placementType === 'tf'
+    ? [...currentTeams, { id: tfId || 'tf', name: tfName || 'TF', requiredSkills: tfRequiredSkills || [] }]
+    : (placementType === 're' && currentTeams.length > 0 ? currentTeams : teams)
+
   const computeFitnessMatrix = () => {
     const allSkillIds = skills.map(s => s.id)
+    const targetTeams = analysisTeams.length > 0 ? analysisTeams : teams
     const scores = {}
     for (const m of members) {
       scores[m.id] = {}
       const mv = allSkillIds.map(sid => skillMatrix[m.id]?.[sid] ?? 0)
       const mvNorm = Math.sqrt(mv.reduce((a, b) => a + b * b, 0)) || 1
-      for (const t of teams) {
-        const tv = allSkillIds.map(sid => t.requiredSkills?.includes(sid) ? 1 : 0)
+      for (const t of targetTeams) {
+        const req = t.requiredSkills || t.required_skills || []
+        const tv = allSkillIds.map(sid => req.includes(sid) ? 1 : 0)
         const tvNorm = Math.sqrt(tv.reduce((a, b) => a + b * b, 0)) || 1
         const dot = mv.reduce((a, b, i) => a + b * tv[i], 0)
         scores[m.id][t.id] = Math.round((dot / (mvNorm * tvNorm)) * 100) / 100
@@ -105,7 +112,7 @@ export default function Step3Conditions() {
     }
     return {
       members: members.map(m => ({ id: m.id, name: m.name })),
-      teams: teams.map(t => ({ id: t.id, name: t.name })),
+      teams: targetTeams.map(t => ({ id: t.id, name: t.name })),
       scores,
     }
   }
@@ -242,9 +249,14 @@ export default function Step3Conditions() {
         })
         if (!tfResult?.tf_members) throw new Error('no tf_members')
       } catch (e) {
-        console.warn('[tf] fallback to mock:', e)
-        const { buildMockTFResult } = await import('../api/tf')
-        tfResult = buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills })
+        console.warn('[tf] API failed, fallback to mock:', e)
+        try {
+          const { buildMockTFResult } = await import('../api/tf')
+          tfResult = buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills })
+        } catch (e2) {
+          console.error('[tf] mock also failed:', e2)
+          tfResult = { tf_members: [], skill_coverage: {}, team_impact: {}, warnings: [], scores: {} }
+        }
       }
       // TFDashboard는 store에서 tfResult를 읽음
       setTFData({
@@ -291,8 +303,8 @@ export default function Step3Conditions() {
     navigate('/step/4')
   }
 
-  // 실제 데이터 기반 적합도 매트릭스 (members/teams가 있을 때만)
-  const fitnessData = (members.length > 0 && teams.length > 0)
+  // 실제 데이터 기반 적합도 매트릭스
+  const fitnessData = (members.length > 0 && analysisTeams.length > 0)
     ? computeFitnessMatrix()
     : { members: [], teams: [], scores: {} }
 

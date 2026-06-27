@@ -40,7 +40,7 @@ export default function Step1Input() {
   const {
     placementType,
     setSkills, setMembers, setSkillMatrix, setTeams, setPlacementMode,
-    setReplacementData, setTFData, setCurrentStep,
+    setReplacementData, setTFData, setCurrentStep, setPlacementType,
   } = useStore()
 
   const type = placementType || 'new'
@@ -98,6 +98,7 @@ export default function Step1Input() {
         existingTeams: result.existingTeams,
       })
     } else {
+      setPlacementType('tf')
       setMembers(result.members)
       setSkills(result.skills)
       setSkillMatrix(result.skillMatrix)

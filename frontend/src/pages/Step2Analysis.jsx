@@ -53,7 +53,18 @@ export default function Step2Analysis() {
     step2CurrentStep,
     setEdaResult, setSelectedIdf, setSelectedKss, setSelectedDiff,
     setFitMatrix, setStep2CurrentStep, setCurrentStep,
+    placementType, currentTeams, tfId, tfName, tfRequiredSkills,
   } = useStore()
+
+  // TF: currentTeams(기존팀) + TF 팀 자체를 projects로 사용
+  // 재배치: currentTeams 또는 teams
+  // 신규: teams
+  const analysisTeams = placementType === 'tf'
+    ? [
+        ...currentTeams,
+        { id: tfId || 'tf', name: tfName || 'TF', requiredSkills: tfRequiredSkills || [] },
+      ]
+    : (placementType === 're' && currentTeams.length > 0 ? currentTeams : teams)
 
   const [loading, setLoading] = useState(!edaResult)
   const [loadStep, setLoadStep] = useState(0)
@@ -81,7 +92,7 @@ export default function Step2Analysis() {
       members: members.map(m => ({ id: m.id, name: m.name, role: m.role })),
       skill_matrix: skillMatrix,
       skills: skills.map(s => ({ id: s.id, name: s.name })),
-      projects: teams.map(t => ({ id: t.id, name: t.name, required_skills: t.requiredSkills || [] })),
+      projects: analysisTeams.map(t => ({ id: t.id, name: t.name, required_skills: t.requiredSkills || t.required_skills || [] })),
     })
       .then(res => {
         clearInterval(iv)
@@ -107,7 +118,7 @@ export default function Step2Analysis() {
         members: members.map(m => ({ id: m.id, name: m.name, role: m.role })),
         skill_matrix: skillMatrix,
         skills: skills.map(s => ({ id: s.id, name: s.name })),
-        projects: teams.map(t => ({ id: t.id, name: t.name, required_skills: t.requiredSkills || [] })),
+        projects: analysisTeams.map(t => ({ id: t.id, name: t.name, required_skills: t.requiredSkills || t.required_skills || [] })),
         selected_idf: selectedIdf,
         selected_kss: selectedKss,
         selected_diff: selectedDiff,

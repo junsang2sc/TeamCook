@@ -140,19 +140,24 @@ def run_replacement(
             needed = min_holders - existing_h
             prob += pulp.lpSum(new_h[i] * x[(i, j)] for i in range(n)) >= needed
 
-    # 소프트 ① 평균 레벨 유지
-    # (기존합 + 신규합 + slack) >= avg_level × (기존인원 + 신규인원)
-    # = avg_level × Nj_existing + avg_level × Σ_i x[i,j]
+    # 소프트 ① 스킬 보유자 기준 평균 레벨 (보유자끼리만 평균)
+    # (기존 보유자 레벨합 + 신규 보유자 레벨합) / (기존 보유자 수 + 신규 보유자 수) >= avg_level
+    # → existing_sum + Σ lv_i*x_i + sl >= avg_level*(existing_holders + Σ h_i*x_i)
+    # → (existing_sum - avg_level*existing_holders) + Σ(lv_i - avg_level*h_i)*x_i + sl >= 0
     avg_slack: dict = {}
     for j, pid in enumerate(P):
         for sid in req[pid]:
             sl = pulp.LpVariable(f"avs_{j}_{sid.replace('-','_').replace(' ','_')}", lowBound=0)
             avg_slack[(j, sid)] = sl
-            existing_sum = team_skill_sum.get((pid, sid), 0.0)
-            new_sum   = pulp.lpSum(lvl(surplus_ids[i], sid) * x[(i, j)] for i in range(n))
-            new_count = pulp.lpSum(x[(i, j)] for i in range(n))
-            prob += (existing_sum + new_sum + sl
-                     >= avg_level * Nj_existing[pid] + avg_level * new_count)
+            existing_sum     = team_skill_sum.get((pid, sid), 0.0)
+            existing_holders = team_skill_holders.get((pid, sid), 0)
+            prob += (
+                (existing_sum - avg_level * existing_holders)
+                + pulp.lpSum(
+                    (lvl(surplus_ids[i], sid) - avg_level * (1 if lvl(surplus_ids[i], sid) > 0 else 0)) * x[(i, j)]
+                    for i in range(n)
+                ) + sl >= 0
+            )
             obj -= lam_avg * sl
 
     # 소프트 ② 성별 균형 (기존 + 신규 합산 기준)
@@ -257,7 +262,7 @@ def run_replacement(
                 unmet_teams.setdefault(j, []).append(sid)
         for j, sids in unmet_teams.items():
             warnings.append({"type": "avg_level", "team_id": P[j],
-                             "message": f"평균 레벨 {avg_level} 기준 미달 스킬: {', '.join(sids)}"})
+                             "message": f"평균 레벨 {avg_level:g} 기준 미달 스킬: {', '.join(sids)}"})
     if unassigned:
         warnings.append({"type": "unassigned", "team_id": None,
                          "message": f"미배치 잉여 인력 {len(unassigned)}명: {', '.join(unassigned)}"})

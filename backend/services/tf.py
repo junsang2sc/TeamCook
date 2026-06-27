@@ -144,18 +144,24 @@ def run_tf(
                 prob += pulp.lpSum(x[i] for i in hold_idxs) <= total_h - min_remain
 
     # 소프트 ① 차출 후 기존 팀 평균 레벨 유지
-    # (기존합 - 차출합 + slack) >= avg_level × (기존인원 - 차출인원)
+    # 소프트 ① 차출 후 기존 팀 스킬 보유자 기준 평균 레벨 유지 (보유자끼리만 평균)
+    # (기존 보유자 레벨합 - 차출 보유자 레벨합) / (기존 보유자 수 - 차출 보유자 수) >= avg_level
+    # → (existing_sum - avg_level*existing_holders) - Σ(lv_i - avg_level*h_i)*x_i + sl >= 0
     avg_slack: dict = {}
     for j, pid in enumerate(P):
         p_idxs = [i for i, t in enumerate(cand_team) if t == pid]
         for sid in req[pid]:
             sl = pulp.LpVariable(f"avs_{j}_{sid.replace('-','_').replace(' ','_')}", lowBound=0)
             avg_slack[(j, sid)] = sl
-            existing_sum  = team_skill_sum.get((pid, sid), 0.0)
-            extracted_sum = pulp.lpSum(lvl(cand_ids[i], sid) * x[i] for i in p_idxs)
-            extracted_cnt = pulp.lpSum(x[i] for i in p_idxs)
-            prob += (existing_sum - extracted_sum + sl
-                     >= avg_level * Nj[pid] - avg_level * extracted_cnt)
+            existing_sum     = team_skill_sum.get((pid, sid), 0.0)
+            existing_holders = team_skill_hold.get((pid, sid), 0)
+            prob += (
+                (existing_sum - avg_level * existing_holders)
+                - pulp.lpSum(
+                    (lvl(cand_ids[i], sid) - avg_level * (1 if lvl(cand_ids[i], sid) > 0 else 0)) * x[i]
+                    for i in p_idxs
+                ) + sl >= 0
+            )
             obj -= lam_avg * sl
 
     # 소프트 ② 차출 후 성별 균형 유지
@@ -245,19 +251,20 @@ def run_tf(
         safe = True
 
         for sid in t_req:
-            total_n  = Nj[pid]
-            remain_n = total_n - len(extracted)
-            if remain_n <= 0:
-                remain_avg = 0.0
-            else:
-                extracted_sum = sum(lvl(mid, sid) for mid in extracted)
-                remain_sum = team_skill_sum.get((pid, sid), 0.0) - extracted_sum
-                remain_avg = remain_sum / remain_n
+            # 보유자끼리만 평균 (holders-only)
+            orig_sum     = team_skill_sum.get((pid, sid), 0.0)
+            orig_holders = team_skill_hold.get((pid, sid), 0)
+            orig_avg = (orig_sum / orig_holders) if orig_holders > 0 else 0.0
 
-            orig_avg = (team_skill_sum.get((pid, sid), 0.0) / total_n) if total_n > 0 else 0.0
+            extracted_sum     = sum(lvl(mid, sid) for mid in extracted)
+            extracted_holders = sum(1 for mid in extracted if lvl(mid, sid) > 0)
+            remain_sum     = orig_sum - extracted_sum
+            remain_holders = orig_holders - extracted_holders
+            remain_avg = (remain_sum / remain_holders) if remain_holders > 0 else 0.0
+
             before[sid] = round(orig_avg, 2)
             after[sid]  = round(remain_avg, 2)
-            if remain_avg < avg_level:
+            if remain_holders == 0 or remain_avg < avg_level:
                 safe = False
 
         team_impact[pid] = {
