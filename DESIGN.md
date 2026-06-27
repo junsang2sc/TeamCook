@@ -8,7 +8,7 @@ colors:
   on-primary: "#FFFFFF"
   secondary: "#FABF4B"
   ink: "#1A1A1A"
-  body: "#6B7B8F"
+  body: "#3f6856"
   hairline: "#C2EAD8"
   canvas: "#FAFBFC"
   canvas-gradient: "135deg, #FAFBFC 0%, #EDFAF3 100%"

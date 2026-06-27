@@ -38,6 +38,13 @@ const useStore = create(
       // Step 2
       analysisResult: null,
       replacementAnalysis: null,
+      edaResult: null,       // { idf, kss, difficulty, talentTypes }
+      selectedIdf: [],       // 카드1 사용자 선택 스킬 ID 리스트
+      selectedKss: [],       // 카드2 사용자 선택 스킬 ID 리스트
+      selectedDiff: [],      // 카드3 사용자 선택 스킬 ID 리스트
+      fitMatrix: null,       // { matrix, stats, top5PerProject, ... }
+      fitStats: null,        // { project_id: {max, min, mean, std} }
+      step2CurrentStep: 1,   // 1~4 스텝 인디케이터
 
       // Step 3
       conditions: {
@@ -75,6 +82,12 @@ const useStore = create(
       setPlacementMode: (mode) => set({ placementMode: mode }),
       setAnalysisResult: (result) => set({ analysisResult: result }),
       setReplacementAnalysis: (result) => set({ replacementAnalysis: result }),
+      setEdaResult: (result) => set({ edaResult: result }),
+      setSelectedIdf: (list) => set({ selectedIdf: list }),
+      setSelectedKss: (list) => set({ selectedKss: list }),
+      setSelectedDiff: (list) => set({ selectedDiff: list }),
+      setFitMatrix: (matrix) => set({ fitMatrix: matrix, fitStats: matrix?.stats ?? null }),
+      setStep2CurrentStep: (step) => set({ step2CurrentStep: step }),
       setConditions: (conditions) => set({ conditions }),
       setPlacementResult: (result) => set({ placementResult: result }),
 
@@ -86,8 +99,8 @@ const useStore = create(
           teams: existingTeams || [],
         }),
 
-      setTFData: ({ tfId, tfName, tfProject, tfRequiredSkills, currentAssignment, currentTeams }) =>
-        set({ tfId, tfName, tfProject, tfRequiredSkills, currentAssignment, currentTeams }),
+      setTFData: ({ tfId, tfName, tfProject, tfRequiredSkills, currentAssignment, currentTeams, tfResult }) =>
+        set({ tfId, tfName, tfProject, tfRequiredSkills, currentAssignment, currentTeams, ...(tfResult !== undefined ? { tfResult } : {}) }),
 
       setTFResult: (tfResult) => set({ tfResult }),
 
@@ -111,6 +124,7 @@ const useStore = create(
         history: [], currentStep: 0,
         replacementScenario: null, currentAssignment: {}, surplusMembers: [],
         tfId: null, tfName: null, tfProject: null, tfRequiredSkills: [], currentTeams: [], tfResult: null,
+        edaResult: null, selectedIdf: [], selectedKss: [], selectedDiff: [], fitMatrix: null, fitStats: null, step2CurrentStep: 1,
       }),
     }),
     {
@@ -137,6 +151,13 @@ const useStore = create(
         tfProject: state.tfProject,
         tfRequiredSkills: state.tfRequiredSkills,
         currentTeams: state.currentTeams,
+        edaResult: state.edaResult,
+        selectedIdf: state.selectedIdf,
+        selectedKss: state.selectedKss,
+        selectedDiff: state.selectedDiff,
+        fitMatrix: state.fitMatrix,
+        fitStats: state.fitStats,
+        step2CurrentStep: state.step2CurrentStep,
       }),
     }
   )

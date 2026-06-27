@@ -2,7 +2,7 @@
 
 ---
 
-## 개발 진행 현황 (2026-06-25 기준)
+## 개발 진행 현황 (2026-06-27 기준)
 
 ### 완료된 작업
 - [x] **프론트엔드 초기화** — React + Vite + Tailwind v4 + Zustand + Recharts + @hello-pangea/dnd
@@ -35,6 +35,22 @@
 - [x] **재배치 전체 플로우** — Step2에 차출 가능 인원 목록 + 기존 팀 리스크 카드 추가, mock 분석 포함
 - [x] **4단계 변경 전/후 비교 뷰** — "변경 전 / 변경 후" 탭 전환, 구성원 변동(합류↑/차출↓) 표시, 커버리지 전후 비교
 
+### 아카이브 페이지 추가 (2026-06-26)
+- [x] **`/archive` 라우트** — LocalStorage 기반 배치 결과 보관함
+- [x] **`src/utils/archive.js`** — `saveToArchive`, `getArchive`, `deleteFromArchive`, `TYPE_META`
+- [x] **`Archive.jsx`** — 다크 헤더 배너 + 카드 그리드 + 빈 상태(pot 일러스트)
+- [x] **Step4 자동 저장** — `useRef` 중복 방지 + 전체 snapshot 저장
+- [x] **결과 보기 / 다시 배치** — 스토어 복원 후 4단계/3단계로 이동
+- [x] **Navbar + Landing nav 아카이브 링크 추가**
+
+### 랜딩 모션 + About 페이지 추가 (2026-06-26)
+- [x] **Framer Motion 설치** — `framer-motion@12`
+- [x] **랜딩 히어로 모션** — 냄비 SVG fade+scale up → 원/삼각/다이아몬드 도형 spring 낙하 + 흔들림 → 냄비 bounce → 헤드카피/서브카피/카드 stagger 페이드인
+- [x] **헤드카피 변경** — "좋은 팀은 우연이 아닙니다" (gradient-brand)
+- [x] **서비스 소개 페이지 (`/about`)** — 6섹션: 히어로 / 문제정의 3카드 / 솔루션 3카드(다크밴드) / 작동원리 3단계 / 도메인 지식 아코디언 / CTA
+- [x] **App.jsx `/about` 라우트 추가**
+- [x] **랜딩 Nav에 "서비스 소개" 링크 추가**
+
 ### UI/브랜드 개선 완료 (2026-06-25)
 - [x] **NanumSquareNeo 폰트 적용** — 굵기 1단계 업 매핑 (300→bRg, 400→cBd, 700→dEb, 800/900→eHv)
 - [x] **TeamCooK 컬러셋 전면 교체** — 브랜드 4색 (`#4D9EED` 블루 / `#4DC2A8` 틸 / `#FABF4B` 앰버 / `#485671` 네이비) 적용
@@ -47,6 +63,22 @@
 - [x] **WhiskLoader 12프레임 애니메이션** — `public/loading/Loading 1.png ~ Loading 12.png` 순환 루프
 - [x] **gradient-brand 업데이트** — `#4D9EED → #4DC2A8 → #FABF4B` (블루→틸→앰버)
 - [x] **README.md 작성** — 서비스 플로우, 계산 공식, 개발현황, 아키텍처 문서화
+
+### 2단계 fit_score 알고리즘 백엔드 연결 완료 (2026-06-27)
+- [x] **`backend/services/fit_score.py`** — 노트북 로직 그대로 Python 함수로 변환 (preprocess/calc_idf/calc_kss/calc_difficulty/calc_talent_type/calc_fit_matrix)
+- [x] **`backend/routers/analyze.py`** — POST /api/analyze/eda (EDA 분석), POST /api/analyze/fit (적합도 매트릭스)
+- [x] **`backend/main.py`** — FastAPI 앱 진입점 + CORS 미들웨어
+- [x] **`backend/requirements.txt`** — fastapi, uvicorn, pydantic
+- [x] **`frontend/src/api/index.js`** — analyzeEda(), analyzeFit() 함수 추가
+- [x] **`frontend/src/store/useStore.js`** — edaResult/selectedIdf/selectedKss/selectedDiff/fitMatrix/fitStats 상태 + 액션 추가
+- [x] **`frontend/src/pages/Step2Analysis.jsx`** — 전면 재작성: 카드1(IDF 희귀도)/카드2(KSS SPOF)/카드3(난이도)/카드4(인재유형) + 체크박스 선택 + 적합도 매트릭스 미리보기(과제중심/구성원중심)
+
+#### 백엔드 실행 방법
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload   # http://localhost:8000
+```
 
 ### 미완료 (Should/Could Have)
 - [ ] PDF 내보내기

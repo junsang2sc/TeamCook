@@ -51,8 +51,8 @@
   --color-hairline: #C2EAD8;
   --color-canvas: #FAFBFC;
   --color-surface: #FFFFFF;
-  --color-surface-dark: #1E3A2F;
-  --color-on-dark: #FAFBFC;
+  --color-surface-dark: #3f6856;
+  --color-on-dark: #3f6856;
 
   --color-primary: #2ECC87;         /* 민트 그린 — 버튼, CTA */
   --color-primary-tint: #EDFAF3;    /* 그린 연한 배경 */

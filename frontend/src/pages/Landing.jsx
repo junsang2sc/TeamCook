@@ -39,9 +39,9 @@ const SOLUTIONS = [
 ]
 
 const HOW_STEPS = [
-  { step: '01', icon: '📂', label: '스킬 데이터 업로드', desc: '구성원 정보와 스킬 역량 점수를 엑셀로 업로드합니다', color: C.primary },
-  { step: '02', icon: '🔍', label: '자동 분석',          desc: '스킬 희귀도, 인재 유형, SPOF 탐지, 수요-공급 분석을 자동 수행합니다', color: C.teal },
-  { step: '03', icon: '✅', label: '최적 팀 배치',       desc: '조건 설정 후 알고리즘이 최적 배치를 생성합니다', color: C.hairline },
+  { step: '01', icon: '/icon/folder icon.png', label: '스킬 데이터 업로드', desc: '구성원 정보와 스킬 역량 점수를 엑셀로 업로드합니다', color: C.primary },
+  { step: '02', icon: '/icon/glass icon.png',  label: '자동 분석',          desc: '스킬 희귀도, 인재 유형, SPOF 탐지, 수요-공급 분석을 자동 수행합니다', color: C.teal },
+  { step: '03', icon: '/icon/check icon.png',  label: '최적 팀 배치',       desc: '조건 설정 후 알고리즘이 최적 배치를 생성합니다', color: C.hairline },
 ]
 
 const FAQ = [
@@ -432,7 +432,11 @@ export default function Landing() {
                   <div className="absolute top-3 right-4 text-6xl font-black opacity-40 select-none" style={{ color: s.color }}>
                     {s.step}
                   </div>
-                  <div className="text-2xl mb-4">{s.icon}</div>
+                  <div className="mb-4">
+                    {s.icon.startsWith('/')
+                      ? <img src={s.icon} alt="" className="w-8 h-8 object-contain" />
+                      : <span className="text-2xl">{s.icon}</span>}
+                  </div>
                   <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: s.color }}>{s.step}</div>
                   <div className="text-base font-bold mb-2" style={{ color: C.ink }}>{s.label}</div>
                   <p className="text-sm leading-relaxed" style={{ color: C.body }}>{s.desc}</p>

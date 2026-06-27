@@ -6,7 +6,7 @@ import Button from '../components/ui/Button'
 import Toggle from '../components/ui/Toggle'
 import Slider from '../components/ui/Slider'
 import useStore from '../store/useStore'
-import { getPlacement } from '../api/index'
+import { getPlacement, getReplacement, getTFPlacement } from '../api/index'
 
 export default function Step3Conditions() {
   const navigate = useNavigate()
@@ -16,6 +16,11 @@ export default function Step3Conditions() {
     analysisResult, placementMode,
     setPlacementResult, setCurrentStep,
     flowType, currentAssignment,
+    fitMatrix,
+    placementType,
+    currentTeams,
+    tfId, tfName, tfProject, tfRequiredSkills,
+    setTFData,
   } = useStore()
 
   const [matrixView, setMatrixView] = useState('heatmap')
@@ -48,7 +53,7 @@ export default function Step3Conditions() {
   }, [teams, teamSize, minTeamSize])
 
   const setPerTeam = (teamId, val) =>
-    setPerTeamSize(prev => ({ ...prev, [teamId]: Math.max(minTeamSize, val) }))
+    setPerTeamSize(prev => ({ ...prev, [teamId]: Math.max(1, val) }))
 
   const [educationConsider, setEducationConsider] = useState(false)
   const [locationConsider, setLocationConsider] = useState(false)
@@ -56,8 +61,9 @@ export default function Step3Conditions() {
 
   const set = (key, val) => setConditions({ ...conditions, [key]: val })
 
-  // 팀당 인원 합계 검증
-  const teamSizeTotal = teamSizeExpanded
+  // 팀당 인원 합계 검증 — perTeamSize가 하나라도 설정되어 있으면 그 합산 기준
+  const hasPerTeamOverride = Object.keys(perTeamSize).length > 0
+  const teamSizeTotal = hasPerTeamOverride
     ? teams.reduce((s, t) => s + (perTeamSize[t.id] ?? (teamSize ?? minTeamSize)), 0)
     : (teamSize ?? minTeamSize) * teams.length
   const teamSizeMismatch = members.length > 0 && teams.length > 0 && teamSizeTotal !== members.length
@@ -168,9 +174,114 @@ export default function Step3Conditions() {
   }
 
   const handleGenerate = async () => {
+    // ── 재배치 ───────────────────────────────────────────────────────────────
+    if (placementType === 're') {
+      let result
+      try {
+        // 기존 팀 = currentTeams (Step1에서 업로드한 현재 배치 팀)
+        // surplus = current_team_id 없는 members
+        const targetTeams = (currentTeams.length > 0 ? currentTeams : teams).map(t => ({
+          id: t.id,
+          name: t.name,
+          requiredSkills: t.requiredSkills || t.required_skills || [],
+          size: t.size || 1,
+        }))
+        result = await getReplacement({
+          members: members.map(m => ({
+            id: m.id, name: m.name, role: m.role ?? '',
+            gender: m.gender ?? '', experience: m.experience ?? null,
+            currentTeamId: m.currentTeamId ?? m.current_team_id ?? null,
+          })),
+          teams: targetTeams,
+          skillMatrix,
+          fitMatrix: fitMatrix?.matrix ?? {},
+          conditions,
+        })
+        if (!result?.placement) throw new Error('no placement')
+      } catch (e) {
+        console.warn('[replacement] fallback to mock:', e)
+        result = buildLocalPlacementResult()
+      }
+      setPlacementResult(result)
+      setCurrentStep(4)
+      navigate('/step/4')
+      return
+    }
+
+    // ── TF 구성 ───────────────────────────────────────────────────────────────
+    if (placementType === 'tf') {
+      let tfResult
+      try {
+        // TF fit_vector: fitMatrix에서 TF 팀 ID 컬럼 추출
+        const tfTeamId = tfId || teams[0]?.id || 'tf'
+        const fitVec = Object.fromEntries(
+          members.map(m => [m.id, (fitMatrix?.matrix?.[m.id]?.[tfTeamId]) ?? 0])
+        )
+        const existingTeams = (currentTeams.length > 0 ? currentTeams : []).map(t => ({
+          id: t.id,
+          name: t.name,
+          requiredSkills: t.requiredSkills || t.required_skills || [],
+          size: t.size || 1,
+        }))
+        tfResult = await getTFPlacement({
+          members: members.map(m => ({
+            id: m.id, name: m.name, role: m.role ?? '',
+            gender: m.gender ?? '', experience: m.experience ?? null,
+            currentTeamId: m.currentTeamId ?? m.current_team_id ?? null,
+          })),
+          teams: existingTeams,
+          tfInfo: {
+            id: tfTeamId,
+            name: tfName || 'TF',
+            size: teams[0]?.size || 1,
+            requiredSkills: tfRequiredSkills || [],
+          },
+          skillMatrix,
+          fitVector: fitVec,
+          conditions,
+        })
+        if (!tfResult?.tf_members) throw new Error('no tf_members')
+      } catch (e) {
+        console.warn('[tf] fallback to mock:', e)
+        const { buildMockTFResult } = await import('../api/tf')
+        tfResult = buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills })
+      }
+      // TFDashboard는 store에서 tfResult를 읽음
+      setTFData({
+        tfId: tfId || 'tf',
+        tfName: tfName || 'TF',
+        tfProject: tfProject || '',
+        tfRequiredSkills: tfRequiredSkills || [],
+        currentAssignment,
+        currentTeams,
+        tfResult,
+      })
+      setCurrentStep(4)
+      navigate('/step/4/tf')
+      return
+    }
+
+    // ── 신규배치 (기본) ───────────────────────────────────────────────────────
     let result
     try {
-      result = await getPlacement({ analysis_result: analysisResult, conditions, members, skills, teams, skillMatrix, placement_mode: placementMode })
+      const teamsWithSize = teams.map(t => ({
+        id: t.id,
+        name: t.name,
+        requiredSkills: t.requiredSkills || t.required_skills || [],
+        size: hasPerTeamOverride
+          ? (perTeamSize[t.id] ?? (teamSize ?? minTeamSize))
+          : (teamSize ?? minTeamSize),
+      }))
+      result = await getPlacement({
+        members: members.map(m => ({
+          id: m.id, name: m.name, role: m.role ?? '',
+          gender: m.gender ?? '', experience: m.experience ?? null,
+        })),
+        teams: teamsWithSize,
+        skillMatrix,
+        fitMatrix: fitMatrix?.matrix ?? {},
+        conditions,
+      })
       if (!result?.placement) throw new Error('no placement')
     } catch {
       result = buildLocalPlacementResult()
@@ -303,8 +414,8 @@ export default function Step3Conditions() {
                           <span className="text-sm text-ink flex-1 truncate" title={t.name}>{t.name}</span>
                           <input
                             type="number"
-                            min={minTeamSize}
-                            max={members.length || 20}
+                            min={1}
+                            max={members.length || 99}
                             value={perTeamSize[t.id] ?? (teamSize ?? minTeamSize)}
                             onChange={e => setPerTeam(t.id, Number(e.target.value))}
                             className="w-16 border border-hairline rounded-sm px-2 py-1 text-sm text-ink text-center focus:outline-none focus:border-primary"

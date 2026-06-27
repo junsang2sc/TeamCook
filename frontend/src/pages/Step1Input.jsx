@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/layout/Navbar'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
+import WhiskLoader from '../components/ui/WhiskLoader'
 import useStore from '../store/useStore'
 import {
   parseNewPlacementTemplate,
@@ -47,6 +48,7 @@ export default function Step1Input() {
 
   const [file, setFile] = useState(null)
   const [parsing, setParsing] = useState(false)
+  const [transitioning, setTransitioning] = useState(false)
   const [result, setResult] = useState(null)
   const [errors, setErrors] = useState([])
   const [warnings, setWarnings] = useState([])
@@ -109,8 +111,13 @@ export default function Step1Input() {
       })
     }
 
-    setCurrentStep(2)
-    navigate('/step/2')
+    setTransitioning(true)
+    const t0 = Date.now()
+    const minDelay = 3000
+    setTimeout(() => {
+      setCurrentStep(2)
+      navigate('/step/2')
+    }, Math.max(0, minDelay - (Date.now() - t0)))
   }
 
   const hasErrors = errors.length > 0
@@ -143,6 +150,13 @@ export default function Step1Input() {
       { label: 'TF 필수스킬', value: result.tfRequiredSkills?.length ?? 0, unit: '개' },
     ]
   })()
+
+  if (transitioning) return (
+    <div className="min-h-screen bg-canvas flex flex-col items-center justify-center gap-6">
+      <WhiskLoader fps={12} size={160} />
+      <p className="text-sm text-body font-mono">데이터 분석 준비 중...</p>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -223,7 +237,7 @@ export default function Step1Input() {
         {summary && (
           <div className="mb-8">
             <p className="text-xs font-mono text-body uppercase tracking-wider mb-3">파싱 결과 요약</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className={`grid gap-3 ${summary.length <= 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
               {summary.map((s) => (
                 <div key={s.label} className="p-4 border border-[rgba(0,0,0,0.08)] rounded-md">
                   <div className="text-xs text-body mb-1">{s.label}</div>

@@ -6,6 +6,7 @@ import Badge from '../components/ui/Badge'
 import useStore from '../store/useStore'
 import { buildMockTFResult } from '../api/tf'
 import { getComment } from '../api/index'
+import useStore from '../store/useStore'
 
 const TYPE_LABELS = { specialist: '전문가형', t_shaped: 'T자형', generalist: '제너럴리스트형' }
 const TYPE_COLORS = { specialist: 'orange', t_shaped: 'periwinkle', generalist: 'mint' }
@@ -16,6 +17,7 @@ export default function TFDashboard() {
     members, skills, skillMatrix, currentTeams, currentAssignment,
     tfId, tfName, tfProject, tfRequiredSkills,
     analysisResult, setCurrentStep,
+    tfResult: storedTfResult,
   } = useStore()
 
   const [tfResult, setTfResult] = useState(null)
@@ -23,10 +25,12 @@ export default function TFDashboard() {
   const [commentLoading, setCommentLoading] = useState(false)
 
   useEffect(() => {
-    const result = buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills })
+    // 백엔드 결과가 store에 있으면 그걸 사용, 없으면 mock fallback
+    const result = storedTfResult
+      || buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills })
     setTfResult(result)
     loadComments(result)
-  }, [])
+  }, [storedTfResult])
 
   const loadComments = async (result) => {
     setCommentLoading(true)

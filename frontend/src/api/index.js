@@ -15,8 +15,28 @@ async function request(path, options = {}) {
 export const analyzeData = (payload) =>
   request('/api/analyze', { method: 'POST', body: JSON.stringify(payload) })
 
-export const getPlacement = (payload) =>
-  request('/api/placement', { method: 'POST', body: JSON.stringify(payload) })
+// 2단계 EDA — 스킬 희귀도/KSS/난이도/인재유형 분석
+export const analyzeEda = (payload) =>
+  request('/api/analyze/eda', { method: 'POST', body: JSON.stringify(payload) })
+
+// 2단계 적합도 매트릭스 계산
+export const analyzeFit = (payload) =>
+  request('/api/analyze/fit', { method: 'POST', body: JSON.stringify(payload) })
+
+export const getPlacement = (payload) => {
+  console.log('[getPlacement] conditions:', JSON.stringify(payload.conditions))
+  return request('/api/placement', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export const getReplacement = (payload) => {
+  console.log('[getReplacement] conditions:', JSON.stringify(payload.conditions))
+  return request('/api/replacement', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export const getTFPlacement = (payload) => {
+  console.log('[getTFPlacement] tf_info:', JSON.stringify(payload.tfInfo))
+  return request('/api/tf', { method: 'POST', body: JSON.stringify(payload) })
+}
 
 export const validatePlacement = (payload) =>
   request('/api/validate', { method: 'POST', body: JSON.stringify(payload) })
