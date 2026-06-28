@@ -8,6 +8,14 @@ import useStore from '../store/useStore'
 import { mockPlacementResult } from '../api/mock'
 import { saveToArchive } from '../utils/archive'
 
+const getTeamLabel = (teamId, teams, teamNamesMap) => {
+  const teamInfo = (teams || []).find(t => t.id === teamId)
+  return (teamInfo?.taskName && teamInfo.taskName !== '' ? teamInfo.taskName : null)
+    || teamNamesMap?.[teamId]
+    || teamInfo?.name
+    || teamId
+}
+
 const MEMBER_PANEL_W = 260
 const DIST_PANEL_W = 280
 
@@ -304,7 +312,7 @@ function SummaryBar({ data, fulfillment, warningTeamIds, showOnlyWarning, hasTea
 
 // ─── TeamCard ─────────────────────────────────────────────────────────────────
 function TeamCard({ teamId, memberIds, data, skillMatrix, skills, teams, warnings, isSelected, onSelect }) {
-  const teamName = data.teamNames?.[teamId] || teamId
+  const teamName = getTeamLabel(teamId, teams, data.teamNames)
   const coverage = Math.round((data.scores?.coverage?.[teamId] ?? 0) * 100)
   const hasWarning = warnings.length > 0
 
@@ -434,7 +442,7 @@ function TeamCard({ teamId, memberIds, data, skillMatrix, skills, teams, warning
 
 // ─── TeamMemberPanel (중간 패널) ──────────────────────────────────────────────
 function TeamMemberPanel({ teamId, memberIds, data, skillMatrix, skills, teams, members, warnings, onSelectMember, onClose }) {
-  const teamName = data.teamNames?.[teamId] || teamId
+  const teamName = getTeamLabel(teamId, teams, data.teamNames)
   const coverage = Math.round((data.scores?.coverage?.[teamId] ?? 0) * 100)
   const skillNameMap = (skills || []).reduce((acc, s) => { acc[s.id] = s.name; return acc }, {})
 
@@ -531,7 +539,7 @@ function TeamMemberPanel({ teamId, memberIds, data, skillMatrix, skills, teams, 
 const PIE_COLORS = ['#4D9EED', '#4DC2A8', '#FABF4B', '#485671', '#f87171', '#a78bfa']
 
 function DistributionPanel({ teamId, memberIds, data, skillMatrix, skills, teams, members }) {
-  const teamName = data.teamNames?.[teamId] || teamId
+  const teamName = getTeamLabel(teamId, teams, data.teamNames)
   const teamInfo = (teams || []).find(t => t.id === teamId)
   const requiredSkills = teamInfo?.requiredSkills || []
 
@@ -564,7 +572,7 @@ function DistributionPanel({ teamId, memberIds, data, skillMatrix, skills, teams
   return (
     <div className="flex flex-col h-full overflow-auto">
       <div className="px-4 py-4 border-b border-hairline shrink-0">
-        <div className="text-base font-semibold text-ink">{teamName} 분포</div>
+        <div className="text-base font-semibold text-ink">배치 현황</div>
         <div className="text-sm text-body">{memberIds.length}명</div>
       </div>
 
@@ -573,15 +581,31 @@ function DistributionPanel({ teamId, memberIds, data, skillMatrix, skills, teams
         {skillData.length > 0 && (
           <div>
             <p className="text-xs font-mono text-body uppercase tracking-wider mb-3">필수 스킬 보유 현황</p>
-            <ResponsiveContainer width="100%" height={skillData.length * 32 + 20}>
-              <BarChart data={skillData} layout="vertical" margin={{ left: 4, right: 28, top: 0, bottom: 0 }}>
-                <XAxis type="number" domain={[0, memberIds.length]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} width={68} />
+            <ResponsiveContainer width="100%" height={skillData.length * 36 + 24}>
+              <BarChart data={skillData} layout="vertical" margin={{ left: 4, right: 36, top: 8, bottom: 4 }}>
+                <XAxis type="number" domain={[0, memberIds.length]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={false}
+                  width={100}
+                  tick={({ x, y, payload }) => (
+                    <foreignObject x={x - 100} y={y - 10} width={96} height={24}>
+                      <div
+                        xmlns="http://www.w3.org/1999/xhtml"
+                        style={{ fontSize: 11, color: '#3f6856', lineHeight: '1.3', wordBreak: 'keep-all', textAlign: 'right', paddingRight: 4 }}
+                      >
+                        {payload.value}
+                      </div>
+                    </foreignObject>
+                  )}
+                />
                 <Tooltip
                   formatter={(val, name) => [name === '보유자' ? `${val}명` : `Lv${val}`, name]}
                   contentStyle={{ fontSize: 12 }}
                 />
-                <Bar dataKey="보유자" fill="#4D9EED" radius={[0, 3, 3, 0]} barSize={12} />
+                <Bar dataKey="보유자" fill="#2ECC87" radius={[0, 3, 3, 0]} barSize={14} label={{ position: 'right', fontSize: 11, fill: '#1A1A1A', formatter: (v) => `${v}명` }} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -697,7 +721,7 @@ function MemberDetailPopup({ memberId, teamId, data, skillMatrix, skills, teams,
               {memberInfo?.experience != null && memberInfo.experience > 0 && (
                 <span className="text-xs text-body font-mono">경력 {memberInfo.experience}년</span>
               )}
-              <span className="text-xs text-body">{memberId} · {data.teamNames?.[teamId] || teamId}</span>
+              <span className="text-xs text-body">{data.memberNames?.[memberId] || memberId} · {getTeamLabel(teamId, teams, data.teamNames)}</span>
             </div>
           </div>
           <button onClick={onClose} className="text-body hover:text-ink text-xl leading-none px-1">×</button>
@@ -959,10 +983,10 @@ function ReplacementImpactPanel({ changes, memberMap, members, currentTeams, cur
                   {newMembers.map(m => (
                     <div key={m.id} className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 bg-surface border border-primary/30 rounded-full">
                       <div className="w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center text-[11px] font-mono font-semibold shrink-0">
-                        {m.name?.slice(0, 2)}
+                        {(m.name || m.id)?.slice(0, 2)}
                       </div>
                       <div className="leading-tight">
-                        <div className="text-xs font-medium text-ink">{m.name} <span className="text-body font-normal">{m.role}</span></div>
+                        <div className="text-xs font-medium text-ink">{m.name || m.id} <span className="text-body font-normal">{m.role}</span></div>
                         <div className="text-[10px] text-body font-mono">잉여 인력 → {tName}</div>
                       </div>
                     </div>

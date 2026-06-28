@@ -156,11 +156,11 @@ export default function TFDashboard() {
                 return (
                   <div key={mid} className="flex flex-col gap-2 p-3.5 border border-hairline rounded-lg bg-surface hover:border-primary/40 transition-colors">
                     <div>
-                      <div className="text-sm font-bold text-ink">{m.name}</div>
+                      <div className="text-sm font-bold text-ink">{m.name || m.id}</div>
                       {m.role && <div className="text-xs text-body mt-0.5">{m.role}</div>}
                       {originTeam && (
                         <div className="text-[11px] text-body font-mono mt-0.5 truncate">
-                          ← {originTeam.name || teamId}
+                          ← {(originTeam.taskName && originTeam.taskName !== '') ? originTeam.taskName : (originTeam.name || teamId)}
                         </div>
                       )}
                     </div>
@@ -185,6 +185,7 @@ export default function TFDashboard() {
 
           {/* 분포 패널 (2칸) */}
           <div className="col-span-2">
+            <h2 className="text-xs font-mono text-body uppercase tracking-wider mb-3">TF 구성 분포</h2>
             <TFDistributionPanel memberIds={tfResult.tf_members} members={members} skills={skills} skillMatrix={skillMatrix} tfRequiredSkills={tfRequiredSkills} />
           </div>
         </section>
@@ -224,10 +225,9 @@ export default function TFDashboard() {
                     style={{ border: `1.5px solid ${accent}` }}>
 
                     <div className="flex items-center gap-3 px-5 py-3.5 border-b border-hairline">
-                      <span className="text-base font-bold font-mono text-ink tracking-tight">{teamId}</span>
-                      {team?.name && team.name !== teamId && (
-                        <span className="text-sm text-body">{team.name}</span>
-                      )}
+                      <span className="text-base font-bold text-ink tracking-tight">
+                        {(team?.taskName && team.taskName !== '') ? team.taskName : (team?.name || teamId)}
+                      </span>
                       <Badge variant={impact.safe ? 'mint' : 'red'}>{impact.safe ? '✓ 공백 없음' : '⚠ 공백 발생'}</Badge>
                       <button
                         onClick={() => setRemainingPopup({ teamId, teamName: team?.name || teamId, members: remaining })}
@@ -257,11 +257,11 @@ export default function TFDashboard() {
                           return (
                             <div key={m.id} className="flex items-center gap-2.5 pl-1.5 pr-3 py-1.5 bg-surface border border-accent-coral/30 rounded-full">
                               <div className="w-7 h-7 rounded-full bg-accent-coral text-surface flex items-center justify-center text-[11px] font-mono font-semibold shrink-0">
-                                {m.name?.slice(0, 2)}
+                                {(m.name || m.id)?.slice(0, 2)}
                               </div>
                               <div className="leading-tight">
                                 <div className="text-xs font-medium text-ink">
-                                  {m.name} <span className="text-body font-normal">{m.role}</span>
+                                  {m.name || m.id} <span className="text-body font-normal">{m.role}</span>
                                 </div>
                                 {heldSkills.length > 0 && (
                                   <div className="text-[10px] text-accent-coral-dark font-mono">
@@ -368,7 +368,7 @@ export default function TFDashboard() {
                     .map(([sid]) => skills.find(s => s.id === sid)?.name ?? sid)
                   return (
                     <tr key={m.id} className="hover:bg-muted/40">
-                      <td className="py-2 font-medium text-ink">{m.name}</td>
+                      <td className="py-2 font-medium text-ink">{m.name || m.id}</td>
                       <td className="py-2 text-body">{m.role || '-'}</td>
                       <td className="py-2 text-body">{m.gender || '-'}</td>
                       <td className="py-2">
@@ -412,8 +412,6 @@ function TFDistributionPanel({ memberIds, members, skills, skillMatrix, tfRequir
 
   return (
     <div className="w-full border border-hairline rounded-lg bg-surface p-4 space-y-5 h-full">
-      <p className="text-base font-semibold text-ink">TF 구성 분포</p>
-
       {/* 필수 스킬 보유 현황 */}
       {skillData.length > 0 && (
         <div>

@@ -400,7 +400,7 @@ function MemberDetailPopup({ memberId, teamId, memberNames, teamNames, skillMatr
         <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
             <div className="text-base font-semibold text-ink">{name}</div>
-            <div className="text-xs text-body">{memberId} · {tName}</div>
+            <div className="text-xs text-body">{name || memberId} · {tName}</div>
           </div>
           <button onClick={onClose} className="text-body hover:text-ink text-xl leading-none px-1">×</button>
         </div>

@@ -44,10 +44,10 @@ export default function MemberPopup({ member, skills, skillMatrix, memberType, o
         {/* 헤더 */}
         <div className="bg-canvas-dark text-on-dark px-6 py-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-primary/80 text-white flex items-center justify-center text-base font-bold shrink-0">
-            {member.name.slice(0, 2)}
+            {(member.name || member.id)?.slice(0, 2)}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-lg font-bold">{member.name}</div>
+            <div className="text-lg font-bold">{member.name || member.id}</div>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {member.role && (
                 <span className="text-xs bg-muted px-2 py-0.5 rounded-sm text-ink font-medium">{member.role}</span>

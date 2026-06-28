@@ -397,6 +397,35 @@ export default function Step2Analysis() {
             )}
           </div>
 
+          {/* 요약 */}
+          <div className="p-4 border border-hairline rounded-lg bg-surface mb-4">
+            {isTF ? (
+              <>
+                <p className="text-sm font-medium text-ink mb-2">
+                  차출 후보 (선택된 팀 소속): {candidateMembers.length}명
+                </p>
+                <div className="flex gap-4 text-sm text-body">
+                  <span>선택된 팀: {localCandidates.size}개</span>
+                  <span>팀별 상한 합계: {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 3), 0)}명</span>
+                  {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 3), 0) < localTfSize && (
+                    <span className="text-accent-coral">⚠ 상한 합계가 TF 목표보다 적습니다</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-ink mb-2">
+                  재배치 대상 잉여 인력: {surplusMembers.length}명
+                </p>
+                <div className="flex gap-4 text-sm text-body">
+                  <span>선택된 팀: {localCandidates.size}개</span>
+                  <span>최대 영입 합계: {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 5), 0)}명</span>
+                  <span className={poolF*100 < 20 ? 'text-accent-coral' : ''}>잉여 인력 여성비율: {(poolF*100).toFixed(0)}%</span>
+                </div>
+              </>
+            )}
+          </div>
+
           {/* 일괄 인원 조정 */}
           <div className="flex items-center gap-3 mb-3">
             <span className="text-sm text-body">{isTF ? '최대차출' : '최대영입'} 일괄 조정:</span>
@@ -484,35 +513,6 @@ export default function Step2Analysis() {
                 </div>
               )
             })}
-          </div>
-
-          {/* 요약 */}
-          <div className="p-4 border border-hairline rounded-lg bg-surface mb-8">
-            {isTF ? (
-              <>
-                <p className="text-sm font-medium text-ink mb-2">
-                  TF 목표: {localTfSize}명 | 차출 후보 (선택된 팀 소속): {candidateMembers.length}명
-                </p>
-                <div className="flex gap-4 text-sm text-body">
-                  <span>선택된 팀: {localCandidates.size}개</span>
-                  <span>팀별 상한 합계: {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 3), 0)}명</span>
-                  {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 3), 0) < localTfSize && (
-                    <span className="text-accent-coral">⚠ 상한 합계가 TF 목표보다 적습니다</span>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-medium text-ink mb-2">
-                  재배치 대상 잉여 인력: {surplusMembers.length}명
-                </p>
-                <div className="flex gap-4 text-sm text-body">
-                  <span>선택된 팀: {localCandidates.size}개</span>
-                  <span>최대 영입 합계: {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 5), 0)}명</span>
-                  <span className={poolF*100 < 20 ? 'text-accent-coral' : ''}>잉여 인력 여성비율: {(poolF*100).toFixed(0)}%</span>
-                </div>
-              </>
-            )}
           </div>
 
           <div className="flex justify-between">

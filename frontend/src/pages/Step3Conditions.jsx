@@ -159,7 +159,7 @@ export default function Step3Conditions() {
       coverage[t.id] = Math.round((covered / req.length) * 100) / 100
     }
     const memberNames = members.reduce((a, m) => { a[m.id] = m.name; return a }, {})
-    const teamNames = teams.reduce((a, t) => { a[t.id] = t.name; return a }, {})
+    const teamNames = teams.reduce((a, t) => { a[t.id] = (t.taskName && t.taskName !== '' ? t.taskName : null) || t.name || t.id; return a }, {})
     // 인재 유형 간단 분류
     const memberTypes = members.reduce((a, m) => {
       const scores = Object.values(skillMatrix[m.id] ?? {}).filter(v => v > 0)
@@ -337,6 +337,12 @@ export default function Step3Conditions() {
         console.error('[placement] fallback also failed:', err2)
         result = { placement: {}, scores: {}, warnings: [] }
       }
+    }
+    if (!result.memberNames) {
+      result.memberNames = members.reduce((a, m) => { a[m.id] = m.name || m.id; return a }, {})
+    }
+    if (!result.teamNames) {
+      result.teamNames = teams.reduce((a, t) => { a[t.id] = (t.taskName && t.taskName !== '' ? t.taskName : null) || t.name || t.id; return a }, {})
     }
     console.log('[placement] navigating to step4, result:', result)
     setPlacementResult(result)

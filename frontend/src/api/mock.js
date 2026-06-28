@@ -215,7 +215,7 @@ function mockNewPlacement({ members, skills, teams, skillMatrix, analysisResult 
     placement[team.id] = shuffled.slice(idx, idx + team.size).map((m) => m.id)
     idx += team.size
   }
-  return buildResult({ placement, teams, skillMatrix, analysisResult })
+  return buildResult({ placement, teams, skillMatrix, analysisResult, members })
 }
 
 function mockReplacementPlacement({ members, skills, teams, skillMatrix, analysisResult, currentAssignment }) {
@@ -280,10 +280,10 @@ function mockReplacementPlacement({ members, skills, teams, skillMatrix, analysi
     ? [{ type: 'capacity', teamId: null, message: `정원 초과로 ${unplacedCount}명을 배치하지 못했습니다. 팀 정원을 늘려주세요.` }]
     : []
 
-  return buildResult({ placement, teams, skillMatrix, analysisResult, extraWarnings })
+  return buildResult({ placement, teams, skillMatrix, analysisResult, extraWarnings, members })
 }
 
-function buildResult({ placement, teams, skillMatrix, analysisResult, extraWarnings = [] }) {
+function buildResult({ placement, teams, skillMatrix, analysisResult, extraWarnings = [], members = [] }) {
   const coverage = {}
   for (const team of teams) {
     const memberIds = placement[team.id] || []
@@ -301,6 +301,11 @@ function buildResult({ placement, teams, skillMatrix, analysisResult, extraWarni
     ...extraWarnings,
   ]
 
+  const memberNames = Object.fromEntries(
+    members.map(m => [m.id, m.name || m.id])
+  )
+  const teamNames = Object.fromEntries(teams.map(t => [t.id, t.name || t.id]))
+
   return {
     placement,
     scores: {
@@ -309,5 +314,7 @@ function buildResult({ placement, teams, skillMatrix, analysisResult, extraWarni
       fitness: Object.fromEntries(teams.map((t) => [t.id, Math.random() * 0.4 + 0.6])),
     },
     warnings,
+    memberNames,
+    teamNames,
   }
 }
