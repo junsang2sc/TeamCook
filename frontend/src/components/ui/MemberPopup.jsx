@@ -49,11 +49,15 @@ export default function MemberPopup({ member, skills, skillMatrix, memberType, o
           <div className="flex-1 min-w-0">
             <div className="text-lg font-bold">{member.name}</div>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {member.role && <span className="text-sm text-body">{member.role}</span>}
+              {member.role && (
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-sm text-ink font-medium">{member.role}</span>
+              )}
+              {member.gender && (
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-sm text-body">{member.gender}</span>
+              )}
               {member.experience != null && member.experience > 0 && (
                 <span className="text-xs text-body font-mono">경력 {member.experience}년</span>
               )}
-              {member.gender && <span className="text-xs text-body">{member.gender}</span>}
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">

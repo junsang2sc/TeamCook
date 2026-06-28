@@ -25,9 +25,13 @@ export default function Step3Conditions() {
     setTFData,
   } = useStore()
 
-  // 재배치에서 멤버의 현재 팀 ID는 currentAssignment에 별도 저장됨
-  const getMemberTeamId = (mid) =>
-    currentAssignment[mid]?.currentTeamId ?? null
+  // 재배치/TF에서 멤버의 현재 팀 ID (TF는 string, 재배치는 { currentTeamId })
+  const getMemberTeamId = (mid) => {
+    const v = currentAssignment[mid]
+    if (!v) return null
+    if (typeof v === 'string') return v
+    return v?.currentTeamId ?? null
+  }
 
   const [matrixView, setMatrixView] = useState('heatmap')
   const [selectedTeam, setSelectedTeam] = useState('')
@@ -66,27 +70,10 @@ export default function Step3Conditions() {
   const teamSizeTotal = hasPerTeamOverride
     ? teams.reduce((s, t) => s + (perTeamSize[t.id] ?? (teamSize ?? minTeamSize)), 0)
     : (teamSize ?? minTeamSize) * teams.length
-  const teamSizeMismatch = members.length > 0 && teams.length > 0 && teamSizeTotal !== members.length
+  const isTF = placementType === 'tf'
+  const isReplacement = placementType === 're'
+  const teamSizeMismatch = !isTF && !isReplacement && members.length > 0 && teams.length > 0 && teamSizeTotal !== members.length
   const teamSizeDiff = teamSizeTotal - members.length
-
-  const handleParseNL = () => {
-    const text = nlInput.trim()
-    if (!text) return
-    if (text.includes('부장')) {
-      setNlParsed({ text: 'distribute 조건 — 부장 역할, 팀당 최소 1명', constraint: { type: 'distribute', role: '부장', min_per_team: 1 } })
-    } else if (text.includes('같은 팀') && text.includes('안')) {
-      setNlParsed({ text: 'separate 조건 — 해당 구성원들을 다른 팀으로 분리', constraint: { type: 'separate', members: [] } })
-    } else {
-      setNlParsed({ text: `일반 조건으로 처리합니다: "${text}"`, constraint: { type: 'custom', text } })
-    }
-  }
-
-  const handleAddConstraint = () => {
-    if (!nlParsed) return
-    setConstraints([...constraints, nlParsed])
-    setNlParsed(null)
-    setNlInput('')
-  }
 
   // 재배치: candidateTeams로 필터, TF: TF 단일과제, 신규: teams
   const allBaseTeams = placementType === 're'
@@ -180,10 +167,22 @@ export default function Step3Conditions() {
       return a
     }, {})
 
+    // 재배치: 이동된 인원 계산 (기존 팀 → 새 팀이 다른 경우)
+    const changes = []
+    for (const [tid, mids] of Object.entries(placement)) {
+      for (const mid of mids) {
+        const prevTid = getMemberTeamId(mid)
+        if (prevTid !== tid) {
+          changes.push({ member_id: mid, from_team: prevTid || null, to_team: tid })
+        }
+      }
+    }
+
     return {
       placement,
       scores: { conditionFulfillment: 0.87, coverage },
       warnings: [],
+      changes,
       beforeCoverage: Object.fromEntries(teams.map(t => [t.id, Math.max(0, (coverage[t.id] ?? 0) - 0.1)])),
       memberNames,
       teamNames,
@@ -192,6 +191,7 @@ export default function Step3Conditions() {
   }
 
   const handleGenerate = async () => {
+    console.log('[handleGenerate] start, placementType:', placementType)
     setIsGenerating(true)
     // ── 재배치 ───────────────────────────────────────────────────────────────
     if (placementType === 're') {
@@ -279,7 +279,7 @@ export default function Step3Conditions() {
         console.warn('[tf] API failed, fallback to mock:', e)
         try {
           const { buildMockTFResult } = await import('../api/tf')
-          tfResult = buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills })
+          tfResult = buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills, tfSize: tfSize ?? 10, minSkillLevel: conditions.minSkillLevel ?? 2.8 })
         } catch (e2) {
           console.error('[tf] mock also failed:', e2)
           tfResult = { tf_members: [], skill_coverage: {}, team_impact: {}, warnings: [], scores: {} }
@@ -301,6 +301,7 @@ export default function Step3Conditions() {
     }
 
     // ── 신규배치 (기본) ───────────────────────────────────────────────────────
+    console.log('[handleGenerate] new placement branch, teams:', teams.length, 'members:', members.length)
     let result
     try {
       const teamsWithSize = teams.map(t => ({
@@ -322,9 +323,17 @@ export default function Step3Conditions() {
         conditions,
       })
       if (!result?.placement) throw new Error('no placement')
-    } catch {
-      result = buildLocalPlacementResult()
+    } catch (err) {
+      console.warn('[placement] API failed, fallback:', err)
+      try {
+        result = buildLocalPlacementResult()
+        console.log('[placement] fallback result:', result)
+      } catch (err2) {
+        console.error('[placement] fallback also failed:', err2)
+        result = { placement: {}, scores: {}, warnings: [] }
+      }
     }
+    console.log('[placement] navigating to step4, result:', result)
     setPlacementResult(result)
     setCurrentStep(4)
     navigate('/step/4')
@@ -384,7 +393,7 @@ export default function Step3Conditions() {
         <main className="flex-1 overflow-auto p-6 space-y-6" style={{ marginRight: '300px' }}>
           <Section title="적합도 매트릭스">
             {placementType === 'tf' ? (
-              <TFGridView data={fitnessData} tfTeamId={tfId || 'tf'} />
+              <TFGridView data={fitnessData} tfTeamId={tfId || 'tf'} currentTeams={currentTeams} candidateTeams={candidateTeams} getMemberTeamId={getMemberTeamId} />
             ) : (
               <>
                 <ViewToggle view={matrixView} onChange={setMatrixView} />
@@ -418,11 +427,11 @@ export default function Step3Conditions() {
                 <p className="text-xs font-mono text-body uppercase tracking-wider">배치 옵션</p>
                 <div className="flex gap-1.5">
                   <button
-                    onClick={() => { set('genderBalance', true); set('seniorityBalance', true); set('experienceBalance', true) }}
+                    onClick={() => setConditions({ ...conditions, genderBalance: true, seniorityBalance: true, experienceBalance: true })}
                     className="text-[11px] font-mono text-body hover:text-ink transition-colors px-1.5 py-0.5 border border-hairline rounded-sm"
                   >전체 선택</button>
                   <button
-                    onClick={() => { set('genderBalance', false); set('seniorityBalance', false); set('experienceBalance', false) }}
+                    onClick={() => setConditions({ ...conditions, genderBalance: false, seniorityBalance: false, experienceBalance: false })}
                     className="text-[11px] font-mono text-body hover:text-ink transition-colors px-1.5 py-0.5 border border-hairline rounded-sm"
                   >전체 해제</button>
                 </div>
@@ -432,7 +441,7 @@ export default function Step3Conditions() {
                 <OptionCheck label="직위 조화" checked={conditions.seniorityBalance} onChange={v => set('seniorityBalance', v)} />
                 <OptionCheck label="연차 조화" checked={conditions.experienceBalance} onChange={v => set('experienceBalance', v)} />
               </div>
-              <div className="mt-3">
+              {placementType !== 're' && <div className="mt-3">
                 <div className="flex items-center gap-2">
                   <label className="text-sm text-ink shrink-0 flex-1">팀 당 인원수</label>
                   <input
@@ -470,7 +479,7 @@ export default function Step3Conditions() {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
               {/* 과제별 인원수 팝업 */}
               {teamSizeExpanded && (
@@ -535,7 +544,13 @@ export default function Step3Conditions() {
                   min={phase1Info?.avgLevelRange?.min ?? 1}
                   max={phase1Info?.avgLevelRange?.max ?? 5}
                   step={0.1}
-                  value={conditions.minSkillLevel ?? phase1Info?.avgLevelRange?.mean ?? 2.8}
+                  value={Math.min(
+                    phase1Info?.avgLevelRange?.max ?? 5,
+                    Math.max(
+                      phase1Info?.avgLevelRange?.min ?? 1,
+                      conditions.minSkillLevel ?? phase1Info?.avgLevelRange?.mean ?? 2.8
+                    )
+                  )}
                   onChange={v => set('minSkillLevel', Math.round(v * 10) / 10)}
                   recommendedValue={phase1Info?.avgLevelRange?.mean != null
                     ? `팀 평균 ${phase1Info.avgLevelRange.mean.toFixed(1)}`
@@ -710,30 +725,48 @@ function MemberView({ data, selectedMember, onSelectMember }) {
   )
 }
 
-// TF 전용: 전체 구성원 × TF 적합도 그리드
-function TFGridView({ data, tfTeamId }) {
-  const sorted = [...data.members].sort(
-    (a, b) => (data.scores[b.id]?.[tfTeamId] ?? 0) - (data.scores[a.id]?.[tfTeamId] ?? 0)
-  )
+// TF 전용: 기존 팀별 그룹핑 × TF 적합도 그리드
+function TFGridView({ data, tfTeamId, currentTeams, candidateTeams, getMemberTeamId }) {
+  const memberMap = Object.fromEntries(data.members.map(m => [m.id, m]))
+
+  // 후보 팀 순서 유지 (candidateTeams 선택 순서 or currentTeams 순서)
+  const candidateSet = new Set(candidateTeams.length > 0 ? candidateTeams : currentTeams.map(t => t.id))
+  const orderedTeams = currentTeams.filter(t => candidateSet.has(t.id))
+
+  // 팀별로 멤버 그룹핑 (적합도 내림차순 정렬)
+  const groups = orderedTeams.map(team => {
+    const teamMembers = data.members
+      .filter(m => getMemberTeamId(m.id) === team.id)
+      .sort((a, b) => (data.scores[b.id]?.[tfTeamId] ?? 0) - (data.scores[a.id]?.[tfTeamId] ?? 0))
+    return { team, members: teamMembers }
+  })
+
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {sorted.map((m, i) => {
-        const score = data.scores[m.id]?.[tfTeamId] ?? 0
-        const { bg, text } = scoreToColor(score)
-        return (
-          <div key={m.id} className="flex items-center gap-3 p-3 border border-hairline rounded-sm">
-            <span className="text-xs text-body w-5 shrink-0">{i + 1}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-ink truncate">{m.name || m.id}</div>
-              {m.name && m.name !== m.id && <div className="text-[10px] text-body font-mono">{m.id}</div>}
-            </div>
-            <div className="shrink-0 px-2.5 py-1 rounded-sm text-xs font-mono font-semibold"
-              style={{ backgroundColor: bg, color: text }}>
-              {Math.round(score * 100)}%
-            </div>
+    <div className="space-y-4">
+      {groups.map(({ team, members }) => (
+        <div key={team.id}>
+          <div className="text-xs font-mono text-body mb-1.5 pb-1 border-b border-hairline flex items-baseline gap-2">
+            <span className="font-medium text-ink">{team.id}</span>
+            <span className="text-[10px] text-body">{members.length}명</span>
           </div>
-        )
-      })}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-1.5">
+            {members.map((m, i) => {
+              const score = data.scores[m.id]?.[tfTeamId] ?? 0
+              const { bg, text } = scoreToColor(score)
+              return (
+                <div key={m.id} className="flex items-center gap-1.5 px-2 py-1.5 border border-hairline rounded-sm">
+                  <span className="text-[10px] text-body font-mono shrink-0 w-4">{i + 1}</span>
+                  <span className="text-xs text-ink truncate flex-1">{m.name || m.id}</span>
+                  <span className="shrink-0 px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-semibold"
+                    style={{ backgroundColor: bg, color: text }}>
+                    {Math.round(score * 100)}%
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

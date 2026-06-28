@@ -86,35 +86,50 @@ export default function Step2Analysis() {
   const [localCandidates, setLocalCandidates] = useState(
     () => new Set(candidateTeams.length > 0 ? candidateTeams : allTeamIds)
   )
-  const [localMaxAdd, setLocalMaxAdd] = useState(
-    () => Object.fromEntries(
-      baseTeams.map(t => [t.id, maxAddPerTeam[t.id] ?? (isTF ? 3 : 5)])
-    )
-  )
   const [localTfSize, setLocalTfSize] = useState(tfSize ?? 10)
+  const [localMaxAdd, setLocalMaxAdd] = useState(() => {
+    const tfTarget = tfSize ?? 10
+    const totalMembers = members.length || 1
+    const numTeams = baseTeams.length || 1
+    return Object.fromEntries(
+      baseTeams.map(t => {
+        if (maxAddPerTeam[t.id] != null) return [t.id, maxAddPerTeam[t.id]]
+        if (isTF) {
+          const teamSize = members.filter(m => {
+            const v = currentAssignment[m.id]
+            const tid = typeof v === 'string' ? v : v?.currentTeamId
+            return tid === t.id
+          }).length || 1
+          const defaultVal = Math.max(1, Math.round(tfTarget * teamSize / totalMembers))
+          return [t.id, defaultVal]
+        }
+        return [t.id, 5]
+      })
+    )
+  })
 
   // 기존 팀 현황 계산 (팀선택 단계 표시용, AVG_LEVEL=2.8 기준)
   const AVG_LEVEL_DEFAULT = 2.8
-  const ROLE_MAP_KR = { '부장': 5, '차장': 4, '과장': 3, '대리': 2, '사원': 1, '팀장급': 5, '중간급': 3, '주니어': 1 }
   const teamStatus = useMemo(() => baseTeams.map(team => {
     const tm = members.filter(m => getMemberTeamId(m.id) === team.id)
     const n = tm.length
-    if (n === 0) return { id: team.id, name: team.name, n, femaleRatio: 0, avgRank: 0, gapCount: 0, totalGap: 0, skillCount: 0 }
+    if (n === 0) return { id: team.id, name: team.name, n, femaleRatio: 0, gapCount: 0, totalGap: 0, skillCount: 0 }
     const nF = tm.filter(m => ['여','f','female'].includes((m.gender||'').toLowerCase())).length
-    const avgRank = tm.map(m => ROLE_MAP_KR[m.role] || 3).reduce((a,b)=>a+b,0) / n
     const reqSkills = team.requiredSkills || team.required_skills || []
-    let gapCount = 0, totalGap = 0
+    let gapCount = 0
     reqSkills.forEach(sid => {
-      const lv = tm.reduce((acc, m) => acc + (skillMatrix[m.id]?.[sid] ?? 0), 0)
-      const gap = Math.max(0, AVG_LEVEL_DEFAULT * n - lv)
-      if (gap > 0) { gapCount++; totalGap += gap }
+      const hasHolder = tm.some(m => (skillMatrix[m.id]?.[sid] ?? 0) > 0)
+      if (!hasHolder) gapCount++
     })
-      // TF 전용: TF 필수 스킬 보유자 수
+    // 차출 안전도: 미달스킬 비율 기반 신호등
+    const fulfillRate = reqSkills.length > 0 ? (reqSkills.length - gapCount) / reqSkills.length : 1
+    const safetyLevel = fulfillRate === 1 ? 'safe' : fulfillRate >= 0.7 ? 'caution' : 'danger'
+    // TF 전용: TF 필수 스킬 보유자 수
     const tfHolders = isTF
       ? (tfRequiredSkills || []).reduce((sum, sid) =>
           sum + tm.filter(m => (skillMatrix[m.id]?.[sid] ?? 0) > 0).length, 0)
       : null
-    return { id: team.id, name: team.name, n, femaleRatio: nF/n, avgRank, gapCount, totalGap: Math.round(totalGap*10)/10, skillCount: reqSkills.length, tfHolders }
+    return { id: team.id, name: team.name, n, femaleRatio: nF/n, gapCount, skillCount: reqSkills.length, fulfillRate, safetyLevel, tfHolders }
   }), [baseTeams, members, skillMatrix, isTF, tfRequiredSkills])
 
   function confirmTeamSelect() {
@@ -129,14 +144,19 @@ export default function Step2Analysis() {
   // 재배치: 사용자가 선택한 candidateTeams만 (미선택 시 전체)
   // 신규: teams
   const effectiveCandidateIds = candidateTeams.length > 0 ? candidateTeams : allTeamIds
-  // TF: 단일 TF 과제만 project로 사용 (차출 후보 × P21)
+  // TF: 전체 기존팀 + TF 과제 모두를 projects로 전달 (전체 수요 반영)
   // 재배치: 선택된 후보 팀만
   // 신규: teams
   const analysisTeams = placementType === 'tf'
-    ? [{ id: tfId || 'tf', name: tfName || 'TF', requiredSkills: tfRequiredSkills || [] }]
+    ? [...(currentTeams.length > 0 ? currentTeams : []), { id: tfId || 'tf', name: tfName || 'TF', requiredSkills: tfRequiredSkills || [] }]
     : placementType === 're'
       ? reBaseTeams.filter(t => effectiveCandidateIds.includes(t.id))
       : teams
+
+  // TF: 차출 후보 팀 소속 인원만 / 그 외: 전체
+  const candidateMembers = isTF
+    ? members.filter(m => localCandidates.has(getMemberTeamId(m.id) || ''))
+    : members
 
   const [loading, setLoading] = useState(!edaResult)
   const [loadStep, setLoadStep] = useState(0)
@@ -182,8 +202,66 @@ export default function Step2Analysis() {
       })
       .catch(err => {
         clearInterval(iv)
-        setEdaError(err.message)
-        setLoading(false)
+        console.warn('[EDA] 백엔드 연결 실패, mock fallback:', err.message)
+
+        // mock fallback: 백엔드 EDA 응답 형식으로 생성
+        const allMembers = members
+        const holderCounts = {}
+        for (const s of skills) {
+          holderCounts[s.id] = allMembers.filter(m => (skillMatrix[m.id]?.[s.id] ?? 0) > 0).length
+        }
+        const idf = {}
+        for (const s of skills) {
+          const h = holderCounts[s.id] ?? 0
+          const total = allMembers.length || 1
+          idf[s.id] = {
+            holders: h,
+            idf_norm: h === 0 ? 1 : Math.max(0, 1 - h / total),
+            is_rare: h <= Math.ceil(total * 0.1),
+            is_common: h >= Math.ceil(total * 0.5),
+          }
+        }
+        const kss = {}
+        for (const s of skills) {
+          const demand = analysisTeams.filter(t => (t.requiredSkills || t.required_skills || []).includes(s.id)).length
+          const holders = holderCounts[s.id] ?? 0
+          const tfDemand = (placementType === 'tf' && (tfRequiredSkills || []).includes(s.id)) ? 1 : 0
+          kss[s.id] = {
+            kss_norm: demand > 0 ? demand / (holders + 1e-9) / analysisTeams.length : 0,
+            demand,
+            holders,
+            is_spof: demand > holders,
+            tf_demand: tfDemand,
+          }
+        }
+        const difficulty = {}
+        for (const s of skills) {
+          const h = holderCounts[s.id] ?? 0
+          const lv4Count = allMembers.filter(m => (skillMatrix[m.id]?.[s.id] ?? 0) >= 4).length
+          difficulty[s.id] = {
+            difficulty: h > 0 ? 1 - lv4Count / h : 0,
+            holders: h,
+            holders_lv4: lv4Count,
+          }
+        }
+        const talent_types = {}
+        for (const m of allMembers) {
+          const levels = skills.map(s => skillMatrix[m.id]?.[s.id] ?? 0).filter(v => v > 0)
+          if (!levels.length) { talent_types[m.id] = 'generalist'; continue }
+          const sorted = [...levels].sort((a, b) => b - a)
+          const top2avg = sorted.slice(0, 2).reduce((a, b) => a + b, 0) / Math.min(2, sorted.length)
+          const restAvg = sorted.slice(2).length ? sorted.slice(2).reduce((a, b) => a + b, 0) / sorted.slice(2).length : 0
+          const mean = levels.reduce((a, b) => a + b, 0) / levels.length
+          const std = Math.sqrt(levels.reduce((s, v) => s + (v - mean) ** 2, 0) / levels.length)
+          if (top2avg >= 2 * (restAvg || 1)) talent_types[m.id] = 'specialist'
+          else if (std < 0.8) talent_types[m.id] = 'generalist'
+          else talent_types[m.id] = 't_shaped'
+        }
+
+        const mockRes = { idf, kss, difficulty, talent_types }
+        setLoadStep(LOADING_STEPS.length - 1)
+        setEdaResult(mockRes)
+        setTimeout(() => setLoading(false), 300)
       })
 
     return () => clearInterval(iv)
@@ -276,9 +354,6 @@ export default function Step2Analysis() {
     const surplusMembers = isReplacement ? members.filter(m => !getMemberTeamId(m.id)) : []
     const nF = surplusMembers.filter(m => ['여','f','female'].includes((m.gender||'').toLowerCase())).length
     const poolF = surplusMembers.length > 0 ? nF / surplusMembers.length : 0
-    const candidateMembers = isTF
-      ? members.filter(m => localCandidates.has(getMemberTeamId(m.id) || ''))
-      : []
     return (
       <div className="min-h-screen bg-canvas">
         <Navbar currentStep={2} />
@@ -299,13 +374,40 @@ export default function Step2Analysis() {
                 <input
                   type="number" min={1} max={200}
                   value={localTfSize}
-                  onChange={e => setLocalTfSize(Math.max(1, parseInt(e.target.value)||1))}
+                  onChange={e => {
+                    const newSize = Math.max(1, parseInt(e.target.value) || 1)
+                    setLocalTfSize(newSize)
+                    const totalMembers = members.length || 1
+                    setLocalMaxAdd(prev => Object.fromEntries(
+                      baseTeams.map(t => {
+                        const teamSize = members.filter(m => {
+                          const v = currentAssignment[m.id]
+                          const tid = typeof v === 'string' ? v : v?.currentTeamId
+                          return tid === t.id
+                        }).length || 1
+                        return [t.id, Math.max(1, Math.round(newSize * teamSize / totalMembers))]
+                      })
+                    ))
+                  }}
                   className="w-20 text-center border border-hairline rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-primary"
                 />
-                <span className="text-xs text-body">명</span>
-                {tfName && <span className="text-xs text-body ml-2">TF: {tfName} ({(tfRequiredSkills||[]).length}개 필수스킬)</span>}
+                <span className="text-sm text-body">명</span>
+                {tfName && <span className="text-sm text-body ml-2">TF: {tfName} ({(tfRequiredSkills||[]).length}개 필수스킬)</span>}
               </div>
             )}
+          </div>
+
+          {/* 일괄 인원 조정 */}
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-sm text-body">{isTF ? '최대차출' : '최대영입'} 일괄 조정:</span>
+            <button
+              className="px-3 py-1 text-sm border border-hairline rounded hover:bg-canvas transition-colors"
+              onClick={() => setLocalMaxAdd(prev => Object.fromEntries(Object.entries(prev).map(([id, v]) => [id, Math.max(0, v - 1)])))}
+            >− 1</button>
+            <button
+              className="px-3 py-1 text-sm border border-hairline rounded hover:bg-canvas transition-colors"
+              onClick={() => setLocalMaxAdd(prev => Object.fromEntries(Object.entries(prev).map(([id, v]) => [id, v + 1])))}
+            >+ 1</button>
           </div>
 
           {/* 팀별 현황 카드 */}
@@ -328,14 +430,14 @@ export default function Step2Analysis() {
                       <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
                         selected ? 'border-primary bg-primary' : 'border-hairline'
                       }`}>
-                        {selected && <span className="text-white text-xs">✓</span>}
+                        {selected && <span className="text-white text-sm">✓</span>}
                       </div>
                       <div>
                         <span className="font-semibold text-ink">{ts.id}</span>
                         {ts.name && ts.name !== ts.id && (
-                          <span className="ml-2 text-xs text-body">{ts.name}</span>
+                          <span className="ml-2 text-sm text-body">{ts.name}</span>
                         )}
-                        <span className="ml-2 text-xs text-body">· {ts.n}명</span>
+                        <span className="ml-2 text-sm text-body">· {ts.n}명</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-6 text-sm">
@@ -344,28 +446,26 @@ export default function Step2Analysis() {
                           <div className={`font-mono font-semibold ${(ts.tfHolders||0) === 0 ? 'text-body' : 'text-primary'}`}>
                             {ts.tfHolders ?? 0}명
                           </div>
-                          <div className="text-xs text-body">TF스킬보유</div>
+                          <div className="text-sm text-body">TF스킬보유</div>
                         </div>
                       )}
                       <div className="text-center">
                         <div className={`font-mono font-semibold ${ts.gapCount > 0 ? 'text-accent-coral' : 'text-primary'}`}>
                           {ts.gapCount}/{ts.skillCount}
                         </div>
-                        <div className="text-xs text-body">미달스킬</div>
+                        <div className="text-sm text-body">미달스킬</div>
                       </div>
                       <div className="text-center">
-                        <div className={`font-mono font-semibold ${ts.totalGap > 0 ? 'text-accent-amber' : 'text-body'}`}>
-                          {ts.totalGap.toFixed(1)}
-                        </div>
-                        <div className="text-xs text-body">스킬부족도</div>
+                        {{
+                          safe:    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#d1fae5] text-[#065f46] text-sm font-medium">● 안전</div>,
+                          caution: <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#fef3c7] text-[#92400e] text-sm font-medium">● 주의</div>,
+                          danger:  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#fee2e2] text-[#991b1b] text-sm font-medium">● 위험</div>,
+                        }[ts.safetyLevel]}
+                        <div className="text-sm text-body mt-0.5">차출 안전도</div>
                       </div>
                       <div className="text-center">
                         <div className="font-mono font-semibold text-ink">{(ts.femaleRatio*100).toFixed(0)}%</div>
-                        <div className="text-xs text-body">여성비율</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="font-mono font-semibold text-ink">{ts.avgRank.toFixed(1)}</div>
-                        <div className="text-xs text-body">평균직급</div>
+                        <div className="text-sm text-body">여성비율</div>
                       </div>
                       <div className="text-center" onClick={e => e.stopPropagation()}>
                         <input
@@ -375,7 +475,7 @@ export default function Step2Analysis() {
                           className="w-14 text-center border border-hairline rounded px-1 py-0.5 text-sm font-mono focus:outline-none focus:border-primary"
                           disabled={!selected}
                         />
-                        <div className="text-xs text-body">최대추가</div>
+                        <div className="text-sm text-body">{isTF ? '최대차출' : '최대영입'}</div>
                       </div>
                     </div>
                   </div>
@@ -391,7 +491,7 @@ export default function Step2Analysis() {
                 <p className="text-sm font-medium text-ink mb-2">
                   TF 목표: {localTfSize}명 | 차출 후보 (선택된 팀 소속): {candidateMembers.length}명
                 </p>
-                <div className="flex gap-4 text-xs text-body">
+                <div className="flex gap-4 text-sm text-body">
                   <span>선택된 팀: {localCandidates.size}개</span>
                   <span>팀별 상한 합계: {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 3), 0)}명</span>
                   {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 3), 0) < localTfSize && (
@@ -404,9 +504,9 @@ export default function Step2Analysis() {
                 <p className="text-sm font-medium text-ink mb-2">
                   재배치 대상 잉여 인력: {surplusMembers.length}명
                 </p>
-                <div className="flex gap-4 text-xs text-body">
+                <div className="flex gap-4 text-sm text-body">
                   <span>선택된 팀: {localCandidates.size}개</span>
-                  <span>총 수용 가능: {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 5), 0)}명</span>
+                  <span>최대 영입 합계: {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 5), 0)}명</span>
                   <span className={poolF*100 < 20 ? 'text-accent-coral' : ''}>잉여 인력 여성비율: {(poolF*100).toFixed(0)}%</span>
                 </div>
               </>
@@ -483,18 +583,18 @@ export default function Step2Analysis() {
         {/* 상단 지시사항 */}
         <Instruction step={cur} />
 
-        {/* 2컬럼 본문 — 1/2단계는 차트(3):인사이트(2), 3/4단계는 요약(2):선택목록(3) */}
-        <div className={`mt-6 grid gap-6 items-stretch ${cur <= 2 ? 'grid-cols-5' : 'grid-cols-5'}`}>
-          <div className={`flex flex-col ${cur <= 2 ? 'col-span-3' : 'col-span-2'}`}>
+        {/* 2컬럼 본문 — 모든 탭 차트(2):인사이트(3) */}
+        <div className="mt-6 grid grid-cols-5 gap-6 items-stretch">
+          <div className="flex flex-col col-span-2">
             {cur === 1 && <TalentPie talentTypes={talent_types} />}
             {cur === 2 && <KssScatter kss={kss} skillNameMap={skillNameMap} />}
             {cur === 3 && <IdfSummary idf={idf} />}
             {cur === 4 && <DiffSummary difficulty={difficulty} />}
           </div>
-          <div className={`flex flex-col gap-4 ${cur <= 2 ? 'col-span-2' : 'col-span-3'}`}>
+          <div className="flex flex-col gap-4 col-span-3">
             {cur === 1 && <TalentInsight talentTypes={talent_types} memberNameMap={memberNameMap} />}
-            {cur === 2 && <KssSelect kss={kss} skillNameMap={skillNameMap} selected={selectedKss} onChange={setSelectedKss} />}
-            {cur === 3 && <IdfSelect idf={idf} skillNameMap={skillNameMap} selected={selectedIdf} onChange={setSelectedIdf} />}
+            {cur === 2 && <KssSelect kss={kss} skillNameMap={skillNameMap} selected={selectedKss} onChange={setSelectedKss} isTF={isTF} />}
+            {cur === 3 && <IdfSelect idf={idf} skillNameMap={skillNameMap} selected={selectedIdf} onChange={setSelectedIdf} totalMembers={isTF ? candidateMembers.length : members.length} />}
             {cur === 4 && <DiffSelect difficulty={difficulty} skillNameMap={skillNameMap} selected={selectedDiff} onChange={setSelectedDiff} />}
           </div>
         </div>
@@ -529,7 +629,7 @@ function StepIndicator({ current, total, steps }) {
         const active = n === current
         return (
           <div key={n} className="flex items-center gap-2">
-            <div className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-mono font-medium transition-colors ${
+            <div className={`flex items-center justify-center w-6 h-6 rounded-full text-sm font-mono font-medium transition-colors ${
               done   ? 'bg-primary text-white' :
               active ? 'bg-ink text-white' :
                        'border border-hairline text-body bg-surface'
@@ -554,7 +654,7 @@ function StepIndicator({ current, total, steps }) {
 // ── 상단 지시사항 ─────────────────────────────────────────────────────────────
 function Instruction({ step }) {
   const texts = [
-    '우리 조직의 인재 구성을 먼저 확인하세요. 이 단계는 선택 없이 다음으로 넘어가면 됩니다.',
+    '우리 조직의 인재 구성을 먼저 확인하세요.',
     '여러 과제에서 동시에 요구하지만 보유자가 적은 스킬입니다. 배치 적합도 계산에 반영할 스킬을 선택하세요.',
     '보유자가 적어 귀한 스킬입니다. 이 스킬을 가진 인재에게 더 높은 가중치를 부여하려면 선택하세요.',
     '레벨 4 이상 보유자가 적을수록 숙달이 어려운 스킬입니다. 난이도 높은 과제에 더 역량 있는 인원을 배치하려면 선택하세요.',
@@ -575,7 +675,7 @@ function QuickBtn({ label, onClick, variant = 'default' }) {
   }[variant]
   return (
     <button onClick={onClick}
-      className={`px-2.5 py-1 text-xs border rounded-sm transition-colors ${cls}`}>
+      className={`px-2.5 py-1 text-sm border rounded-sm transition-colors ${cls}`}>
       {label}
     </button>
   )
@@ -596,7 +696,7 @@ function TalentPie({ talentTypes }) {
 
   return (
     <div className="border border-hairline rounded-xl bg-surface p-5 flex-1 flex flex-col">
-      <p className="text-xs text-body font-mono uppercase tracking-wider mb-4">유형별 인원 분포</p>
+      <p className="text-sm text-body font-mono uppercase tracking-wider mb-4">유형별 인원 분포</p>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -625,7 +725,7 @@ function TalentInsight({ talentTypes, memberNameMap }) {
   return (
     <div className="flex flex-col gap-4 flex-1">
       <div className="border border-hairline rounded-xl bg-surface p-5">
-        <p className="text-xs text-body font-mono uppercase tracking-wider mb-3">유형별 인원</p>
+        <p className="text-sm text-body font-mono uppercase tracking-wider mb-3">유형별 인원</p>
         {Object.entries(counts).map(([type, n]) => (
           <div key={type} className="flex items-center gap-2 mb-2">
             <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: C.talentColors[type] }} />
@@ -633,14 +733,14 @@ function TalentInsight({ talentTypes, memberNameMap }) {
             <span className="text-sm font-mono font-medium text-ink">{n}명</span>
           </div>
         ))}
-        <p className="text-xs text-body mt-2 pt-2 border-t border-hairline">총 {entries.length}명</p>
+        <p className="text-sm text-body mt-2 pt-2 border-t border-hairline">총 {entries.length}명</p>
       </div>
 
       <div className="border border-hairline rounded-xl bg-surface p-5">
-        <p className="text-xs text-body font-mono uppercase tracking-wider mb-2">스킬 수 vs 레벨 분산</p>
+        <p className="text-sm text-body font-mono uppercase tracking-wider mb-2">스킬 수 vs 레벨 분산</p>
         <div className="flex gap-3 mb-2 flex-wrap">
           {Object.entries(C.talentColors).map(([type, color]) => (
-            <div key={type} className="flex items-center gap-1 text-xs text-body">
+            <div key={type} className="flex items-center gap-1 text-sm text-body">
               <div className="w-2.5 h-2.5 rounded-full" style={{ background: color, opacity: 0.75 }} />
               {type}
             </div>
@@ -655,7 +755,7 @@ function TalentInsight({ talentTypes, memberNameMap }) {
               if (!payload?.length) return null
               const d = payload[0]?.payload
               return (
-                <div className="bg-surface border border-hairline rounded px-2 py-1 text-xs shadow-sm">
+                <div className="bg-surface border border-hairline rounded px-2 py-1 text-sm shadow-sm">
                   <div className="font-medium">{memberNameMap[d?.id] || d?.id}</div>
                   <div className="text-body">{d?.type}</div>
                 </div>
@@ -680,17 +780,16 @@ function KssScatter({ kss, skillNameMap }) {
   const entries = Object.entries(kss).map(([sid, v]) => ({ sid, ...v }))
   const maxVal = Math.max(...entries.map(e => Math.max(e.holders, e.demand)), 1)
 
-  const spofData = entries.filter(e => e.is_spof).map(e => ({ x: e.holders, y: e.demand, sid: e.sid, is_spof: true, is_bottleneck: false }))
-  const btlData  = entries.filter(e => !e.is_spof && e.is_bottleneck).map(e => ({ x: e.holders, y: e.demand, sid: e.sid, is_spof: false, is_bottleneck: true }))
-  const normData = entries.filter(e => !e.is_spof && !e.is_bottleneck).map(e => ({ x: e.holders, y: e.demand, sid: e.sid, is_spof: false, is_bottleneck: false }))
+  const spofData = entries.filter(e => e.is_spof).map(e => ({ x: e.holders, y: e.demand, sid: e.sid, is_spof: true }))
+  const normData = entries.filter(e => !e.is_spof).map(e => ({ x: e.holders, y: e.demand, sid: e.sid, is_spof: false }))
 
   return (
     <div className="border border-hairline rounded-xl bg-surface p-5 flex-1 flex flex-col">
-      <p className="text-xs text-body font-mono uppercase tracking-wider mb-4">수요 vs 공급 분포</p>
+      <p className="text-sm text-body font-mono uppercase tracking-wider mb-4">수요 vs 공급 분포</p>
       {/* 범례 — 차트 위에 별도 배치해서 X축 레이블 겹침 방지 */}
       <div className="flex gap-4 mb-2">
-        {[{ label: '일반', color: C.primary, opacity: 0.4 }, { label: '병목', color: C.amber, opacity: 1 }, { label: 'SPOF', color: C.coral, opacity: 1 }].map(item => (
-          <div key={item.label} className="flex items-center gap-1 text-xs text-body">
+        {[{ label: '일반', color: C.primary, opacity: 0.4 }, { label: 'SPOF', color: C.coral, opacity: 1 }].map(item => (
+          <div key={item.label} className="flex items-center gap-1 text-sm text-body">
             <div className="w-2.5 h-2.5 rounded-full" style={{ background: item.color, opacity: item.opacity }} />
             {item.label}
           </div>
@@ -709,16 +808,14 @@ function KssScatter({ kss, skillNameMap }) {
             if (!payload?.length) return null
             const d = payload[0]?.payload
             return (
-              <div className="bg-surface border border-hairline rounded px-2 py-1 text-xs shadow-sm">
+              <div className="bg-surface border border-hairline rounded px-2 py-1 text-sm shadow-sm">
                 <div className="font-medium">{skillNameMap[d?.sid] || d?.sid}</div>
-                <div className="text-body">공급 {d?.x}명 / 수요 {d?.y}건</div>
+                <div className="text-body">공급 {d?.x}명 · 수요 {d?.y}건</div>
                 {d?.is_spof && <div className="text-accent-coral font-medium mt-0.5">SPOF</div>}
-                {!d?.is_spof && d?.is_bottleneck && <div className="text-amber-dark font-medium mt-0.5">병목</div>}
               </div>
             )
           }} />
           <Scatter name="일반" data={normData} fill={C.primary} opacity={0.35} />
-          <Scatter name="병목" data={btlData}  fill={C.amber} opacity={0.85} />
           <Scatter name="SPOF" data={spofData} fill={C.coral} opacity={0.9} />
         </ScatterChart>
       </ResponsiveContainer>
@@ -727,11 +824,10 @@ function KssScatter({ kss, skillNameMap }) {
   )
 }
 
-function KssSelect({ kss, skillNameMap, selected, onChange }) {
+function KssSelect({ kss, skillNameMap, selected, onChange, isTF = false }) {
   const entries = sortDesc(Object.entries(kss).map(([sid, v]) => ({ sid, ...v })), 'kss_norm')
   const sel = new Set(selected)
   const spofIds = entries.filter(e => e.is_spof).map(e => e.sid)
-  const btlIds  = entries.filter(e => e.is_bottleneck).map(e => e.sid)
 
   function toggle(sid) {
     const next = new Set(sel)
@@ -740,50 +836,53 @@ function KssSelect({ kss, skillNameMap, selected, onChange }) {
   }
 
   const nSpof = spofIds.length
-  const nBtl  = btlIds.length
 
   const kssGuide = (() => {
-    if (nSpof === 0 && nBtl === 0)
-      return { text: '현재 SPOF나 병목 스킬이 없습니다. 수요가 높은 스킬을 선택적으로 반영할 수 있습니다.', color: '#1a7a4a', bg: '#edfaf3' }
-    if (nSpof > 0 && nBtl === 0)
-      return { text: `보유자가 극히 적은 SPOF 스킬이 ${nSpof}개 있습니다. 적합도 계산에 반영할 스킬을 선택해주세요.`, color: C.coral, bg: '#fde8e8' }
-    if (nSpof === 0 && nBtl > 0)
-      return { text: `수요 대비 공급이 부족한 병목 스킬이 ${nBtl}개 있습니다. 해당 스킬 보유자가 중요한 자원이 될 수 있습니다.`, color: '#b7791f', bg: '#fef3c7' }
-    return { text: `SPOF ${nSpof}개, 병목 ${nBtl}개가 발견됐습니다. 리스트에서 확인 후 반영할 스킬을 선택해주세요.`, color: C.coral, bg: '#fde8e8' }
+    if (nSpof === 0)
+      return { text: '현재 SPOF 스킬이 없습니다.\n수요가 높은 스킬을 선택적으로 반영할 수 있습니다.', color: '#1a7a4a', bg: '#edfaf3' }
+    return { text: `수요가 공급을 초과하는 SPOF 스킬이 ${nSpof}개 있습니다. 적합도 계산에 반영할 스킬을 선택해주세요.`, color: C.coral, bg: '#fde8e8' }
   })()
 
   return (
     <div className="border border-hairline rounded-xl bg-surface p-5 flex flex-col gap-3">
       {/* 안내 멘트 */}
-      <div className="rounded-lg px-3 py-2.5 text-xs leading-relaxed" style={{ background: kssGuide.bg, color: kssGuide.color }}>
-        {kssGuide.text}
+      <div className="rounded-lg px-3 py-2.5 text-sm leading-relaxed" style={{ background: kssGuide.bg, color: kssGuide.color }}>
+        {kssGuide.text.split('\n').map((line, i) => <span key={i}>{line}{i < kssGuide.text.split('\n').length - 1 && <br />}</span>)}
       </div>
-      <div className="flex items-center gap-3 flex-wrap text-xs font-mono">
+      <div className="flex items-center gap-3 flex-wrap text-sm font-mono">
         <span className="text-accent-coral font-medium">SPOF {nSpof}개</span>
-        <span className="text-body">·</span>
-        <span style={{ color: '#b7791f' }}>병목 {nBtl}개</span>
       </div>
       <div className="flex gap-1.5 flex-wrap">
-        <QuickBtn label="SPOF 전체 선택" variant="red"   onClick={() => onChange(spofIds)} />
-        <QuickBtn label="병목 전체 선택" variant="amber" onClick={() => onChange(btlIds)} />
-        <QuickBtn label="전체 해제"                      onClick={() => onChange([])} />
+        <QuickBtn label="SPOF 전체 선택" variant="red" onClick={() => onChange(spofIds)} />
+        <QuickBtn label="전체 해제"                   onClick={() => onChange([])} />
       </div>
-      <span className="text-xs text-body font-mono">{selected.length}개 선택됨</span>
+      <span className="text-sm text-body font-mono">{selected.length}개 선택됨</span>
       <div className="overflow-auto border border-hairline rounded-md" style={{ maxHeight: 320 }}>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-hairline text-sm font-mono text-body uppercase tracking-wider sticky top-0">
+          <span className="w-3.5 shrink-0" />
+          <span className="w-20 shrink-0">스킬 코드</span>
+          <span className="flex-1">스킬명</span>
+          <span className="shrink-0 mr-1 w-16 text-right">공급/수요</span>
+          {isTF && <span className="shrink-0 w-16 text-right">TF수요</span>}
+          <span className="shrink-0 w-8" />
+        </div>
         {entries.map(e => (
           <label key={e.sid}
             className={`flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-hairline last:border-0 hover:bg-canvas transition-colors ${sel.has(e.sid) ? 'bg-primary/5' : ''}`}>
             <input type="checkbox" checked={sel.has(e.sid)} onChange={() => toggle(e.sid)}
               className="w-3.5 h-3.5 shrink-0" style={{ accentColor: C.primary }} />
-            <span className="font-mono text-xs text-body w-20 shrink-0 truncate">{e.sid}</span>
-            <span className="text-xs text-ink flex-1 truncate">{skillNameMap[e.sid] || ''}</span>
-            <span className="text-xs text-body font-mono shrink-0 mr-1">수요{e.demand}/공급{e.holders}</span>
-            {e.is_spof && (
-              <span className="text-[10px] px-1 py-0.5 rounded font-medium shrink-0" style={{ background: '#fde8e8', color: C.coral }}>SPOF</span>
+            <span className="font-mono text-sm text-body w-20 shrink-0 truncate">{e.sid}</span>
+            <span className="text-sm text-ink flex-1 truncate">{skillNameMap[e.sid] || ''}</span>
+            <span className="text-sm text-body font-mono shrink-0 mr-1 w-16 text-right">{e.holders}/{e.demand}</span>
+            {isTF && (
+              <span className={`text-sm font-mono shrink-0 w-16 text-right ${e.tf_demand > 0 ? 'text-primary font-semibold' : 'text-body'}`}>
+                {e.tf_demand ?? 0}
+              </span>
             )}
-            {!e.is_spof && e.is_bottleneck && (
-              <span className="text-[10px] px-1 py-0.5 rounded font-medium shrink-0" style={{ background: '#fef3c7', color: '#b7791f' }}>병목</span>
-            )}
+            {e.is_spof
+              ? <span className="text-sm px-1 py-0.5 rounded font-medium shrink-0 w-8 text-center" style={{ background: '#fde8e8', color: C.coral }}>SPOF</span>
+              : <span className="shrink-0 w-8" />
+            }
           </label>
         ))}
       </div>
@@ -810,7 +909,7 @@ function IdfSummary({ idf }) {
 
   return (
     <div className="border border-hairline rounded-xl bg-surface p-5 flex-1 flex flex-col gap-4">
-      <p className="text-xs text-body font-mono uppercase tracking-wider">희귀도 분포 요약</p>
+      <p className="text-sm text-body font-mono uppercase tracking-wider">희귀도 분포 요약</p>
 
       {/* 파이차트 */}
       <div style={{ height: 180 }}>
@@ -832,24 +931,24 @@ function IdfSummary({ idf }) {
             <div className="text-lg font-mono font-semibold" style={{ color: catColor[cat] === '#C2EAD8' ? '#1a7a4a' : catColor[cat] }}>
               {counts[cat] || 0}
             </div>
-            <div className="text-[10px] text-body mt-0.5">{cat}</div>
+            <div className="text-sm text-body mt-0.5">{cat}</div>
           </div>
         ))}
       </div>
 
       {/* 희귀 스킬 보유자 범위 */}
       {nRare > 0 && (
-        <div className="rounded-lg px-3 py-2 bg-canvas text-xs text-body">
+        <div className="rounded-lg px-3 py-2 bg-canvas text-sm text-body">
           희귀 분류 스킬의 실제 보유자: <span className="font-mono font-medium text-ink">{minHolders}명 ~ {maxHolders}명</span>
           <br />
-          <span className="text-[10px]">상대 순위 기준(하위 33%)이므로 보유자 수를 직접 확인하세요.</span>
+          <span className="text-sm">상대 순위 기준(하위 33%)이므로 보유자 수를 직접 확인하세요.</span>
         </div>
       )}
     </div>
   )
 }
 
-function IdfSelect({ idf, skillNameMap, selected, onChange }) {
+function IdfSelect({ idf, skillNameMap, selected, onChange, totalMembers }) {
   const entries = sortDesc(Object.entries(idf).map(([sid, v]) => ({ sid, ...v })), 'idf_norm')
   const sel = new Set(selected)
   const counts = entries.reduce((acc, e) => { acc[e.category] = (acc[e.category] || 0) + 1; return acc }, {})
@@ -879,7 +978,7 @@ function IdfSelect({ idf, skillNameMap, selected, onChange }) {
       }
     const rarePct = Math.round(nRare / total * 100)
     return {
-      text: `상대적으로 보유자가 적은 스킬 ${nRare}개(상위 ${rarePct}%)가 희귀로 분류됐습니다. 분류는 전체 스킬 내 상대 순위 기준이므로, 아래 목록에서 실제 보유자 수(명)를 확인한 뒤 진짜로 드문 스킬인지 직접 판단해주세요.`,
+      text: `상대적으로 보유자가 적은 스킬 ${nRare}개(상위 ${rarePct}%)가 희귀로 분류되었습니다.\n분류는 전체 스킬 내 상대 순위 기준이므로, 아래 목록에서 실제 보유자 수(명)를 확인한 뒤 판단해주세요.`,
       color: '#92400e', bg: '#fef3c7',
     }
   })()
@@ -887,10 +986,10 @@ function IdfSelect({ idf, skillNameMap, selected, onChange }) {
   return (
     <div className="border border-hairline rounded-xl bg-surface p-5 flex flex-col gap-3">
       {/* 안내 멘트 */}
-      <div className="rounded-lg px-3 py-2.5 text-xs leading-relaxed" style={{ background: idfGuide.bg, color: idfGuide.color }}>
-        {idfGuide.text}
+      <div className="rounded-lg px-3 py-2.5 text-sm leading-relaxed" style={{ background: idfGuide.bg, color: idfGuide.color }}>
+        {idfGuide.text.split('\n').map((line, i) => <span key={i}>{line}{i < idfGuide.text.split('\n').length - 1 && <br />}</span>)}
       </div>
-      <div className="flex gap-3 text-xs font-mono flex-wrap">
+      <div className="flex gap-3 text-sm font-mono flex-wrap">
         <span style={{ color: C.coral }}>희귀 {nRare}개</span>
         <span className="text-body">보통 {counts['보통'] || 0}개</span>
         <span style={{ color: '#1a7a4a' }}>보편 {nCommon}개</span>
@@ -899,17 +998,24 @@ function IdfSelect({ idf, skillNameMap, selected, onChange }) {
         <QuickBtn label="희귀 스킬 전체 선택" variant="red" onClick={() => onChange(rareIds)} />
         <QuickBtn label="전체 해제" onClick={() => onChange([])} />
       </div>
-      <span className="text-xs text-body font-mono">{selected.length}개 선택됨</span>
+      <span className="text-sm text-body font-mono">{selected.length}개 선택됨</span>
       <div className="overflow-auto border border-hairline rounded-md" style={{ maxHeight: 320 }}>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-hairline text-sm font-mono text-body uppercase tracking-wider sticky top-0">
+          <span className="w-3.5 shrink-0" />
+          <span className="w-20 shrink-0">스킬 코드</span>
+          <span className="flex-1">스킬명</span>
+          <span className="shrink-0 mr-1">보유자</span>
+          <span className="shrink-0 w-10">희귀도</span>
+        </div>
         {entries.map(e => (
           <label key={e.sid}
             className={`flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-hairline last:border-0 hover:bg-canvas transition-colors ${sel.has(e.sid) ? 'bg-primary/5' : ''}`}>
             <input type="checkbox" checked={sel.has(e.sid)} onChange={() => toggle(e.sid)}
               className="w-3.5 h-3.5 shrink-0" style={{ accentColor: C.primary }} />
-            <span className="font-mono text-xs text-body w-20 shrink-0 truncate">{e.sid}</span>
-            <span className="text-xs text-ink flex-1 truncate">{skillNameMap[e.sid] || ''}</span>
-            <span className="text-xs text-body font-mono shrink-0 mr-1">{e.holders}명</span>
-            <span className="text-[10px] px-1 py-0.5 rounded font-medium shrink-0"
+            <span className="font-mono text-sm text-body w-20 shrink-0 truncate">{e.sid}</span>
+            <span className="text-sm text-ink flex-1 truncate">{skillNameMap[e.sid] || ''}</span>
+            <span className="text-sm text-body font-mono shrink-0 mr-1">{e.holders}/{totalMembers}명</span>
+            <span className="text-sm px-1 py-0.5 rounded font-medium shrink-0 w-10 text-center"
               style={catStyle[e.category] || {}}>
               {e.category}
             </span>
@@ -928,31 +1034,31 @@ function DiffSummary({ difficulty }) {
   const total = entries.length
   const withHolders = entries.filter(e => e.holders > 0)
   const avg  = withHolders.length ? withHolders.reduce((s, e) => s + e.difficulty, 0) / withHolders.length : 0
-  const hard = entries.filter(e => e.difficulty >= 0.7).length   // lv4+ 비율 30% 미만
+  const hard = entries.filter(e => e.difficulty >= 0.7).length   // lv4 이상 비율 30% 미만
   const easy = entries.filter(e => e.difficulty === 0).length    // 전원 lv4+
 
   const buckets = [
-    { label: '매우 어려움', desc: 'lv4+ 비율 0~30%', count: entries.filter(e => e.difficulty >= 0.7).length, color: C.coral },
-    { label: '보통',        desc: 'lv4+ 비율 30~70%', count: entries.filter(e => e.difficulty > 0.3 && e.difficulty < 0.7).length, color: C.amber },
-    { label: '쉬움',        desc: 'lv4+ 비율 70%+',   count: entries.filter(e => e.difficulty <= 0.3 && e.holders > 0).length, color: C.primary },
+    { label: '매우 어려움', desc: 'lv4 이상 비율 0~30%', count: entries.filter(e => e.difficulty >= 0.7).length, color: C.coral },
+    { label: '보통',        desc: 'lv4 이상 비율 30~70%', count: entries.filter(e => e.difficulty > 0.3 && e.difficulty < 0.7).length, color: C.amber },
+    { label: '쉬움',        desc: 'lv4 이상 비율 70%+',   count: entries.filter(e => e.difficulty <= 0.3 && e.holders > 0).length, color: C.primary },
     { label: '보유자 없음', desc: '미측정',             count: entries.filter(e => e.holders === 0).length, color: C.hairline },
   ]
 
   return (
     <div className="border border-hairline rounded-xl bg-surface p-5 flex-1 flex flex-col gap-4">
-      <p className="text-xs text-body font-mono uppercase tracking-wider">스킬 난이도 요약</p>
+      <p className="text-sm text-body font-mono uppercase tracking-wider">스킬 난이도 요약</p>
 
       {/* 핵심 수치 */}
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-lg p-4 bg-canvas text-center">
           <div className="text-2xl font-mono font-semibold text-ink">{(avg * 100).toFixed(0)}%</div>
-          <div className="text-[10px] text-body mt-1">평균 난이도</div>
-          <div className="text-[10px] text-body">(lv4+ 미달 비율)</div>
+          <div className="text-sm text-body mt-1">평균 난이도</div>
+          <div className="text-sm text-body">(lv4+ 미달 비율)</div>
         </div>
         <div className="rounded-lg p-4 bg-canvas text-center">
           <div className="text-2xl font-mono font-semibold" style={{ color: C.coral }}>{hard}</div>
-          <div className="text-[10px] text-body mt-1">어려운 스킬</div>
-          <div className="text-[10px] text-body">(lv4+ 비율 30% 미만)</div>
+          <div className="text-sm text-body mt-1">어려운 스킬</div>
+          <div className="text-sm text-body">(lv4 이상 비율 30% 미만)</div>
         </div>
       </div>
 
@@ -960,17 +1066,17 @@ function DiffSummary({ difficulty }) {
       <div className="flex flex-col gap-1.5">
         {buckets.map(b => (
           <div key={b.label} className="flex items-center gap-2">
-            <div className="w-20 text-[10px] text-body shrink-0">{b.label}</div>
+            <div className="w-20 text-sm text-body shrink-0">{b.label}</div>
             <div className="flex-1 h-4 rounded-sm overflow-hidden bg-canvas">
               <div className="h-full rounded-sm transition-all"
                 style={{ width: `${total ? (b.count / total * 100) : 0}%`, background: b.color, opacity: 0.8 }} />
             </div>
-            <div className="text-[10px] font-mono text-body w-6 text-right shrink-0">{b.count}</div>
+            <div className="text-sm font-mono text-body w-6 text-right shrink-0">{b.count}</div>
           </div>
         ))}
       </div>
 
-      <p className="text-[10px] text-body">난이도 = 1 − (lv4+ 보유자 수 / 전체 보유자 수)</p>
+      <p className="text-sm text-body">난이도 = 1 − (lv4+ 보유자 수 / 전체 보유자 수)</p>
     </div>
   )
 }
@@ -978,7 +1084,7 @@ function DiffSummary({ difficulty }) {
 function DiffSelect({ difficulty, skillNameMap, selected, onChange }) {
   const entries = sortDesc(Object.entries(difficulty).map(([sid, v]) => ({ sid, ...v })), 'difficulty')
   const sel = new Set(selected)
-  const top20ids = entries.slice(0, 20).map(e => e.sid)
+  const hardIds = entries.filter(e => e.difficulty >= 0.7).map(e => e.sid)
 
   function toggle(sid) {
     const next = new Set(sel)
@@ -989,20 +1095,29 @@ function DiffSelect({ difficulty, skillNameMap, selected, onChange }) {
   return (
     <div className="border border-hairline rounded-xl bg-surface p-5 flex flex-col gap-3">
       <div className="flex gap-1.5 flex-wrap">
-        <QuickBtn label="어려운 스킬 TOP 20" variant="amber" onClick={() => onChange(top20ids)} />
+        <QuickBtn label="어려운 스킬 전체 선택" variant="amber" onClick={() => onChange(hardIds)} />
         <QuickBtn label="전체 해제" onClick={() => onChange([])} />
       </div>
-      <span className="text-xs text-body font-mono">{selected.length}개 선택됨</span>
+      <span className="text-sm text-body font-mono">{selected.length}개 선택됨</span>
       <div className="overflow-auto border border-hairline rounded-md" style={{ maxHeight: 320 }}>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-hairline text-sm font-mono text-body uppercase tracking-wider sticky top-0">
+          <span className="w-3.5 shrink-0" />
+          <span className="w-20 shrink-0">스킬 코드</span>
+          <span className="flex-1">스킬명</span>
+          <span className="shrink-0 mr-1">lv4 이상 비율</span>
+          <span className="shrink-0 w-10 text-right">난이도</span>
+        </div>
         {entries.map(e => (
           <label key={e.sid}
             className={`flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-hairline last:border-0 hover:bg-canvas transition-colors ${sel.has(e.sid) ? 'bg-primary/5' : ''}`}>
             <input type="checkbox" checked={sel.has(e.sid)} onChange={() => toggle(e.sid)}
               className="w-3.5 h-3.5 shrink-0" style={{ accentColor: C.primary }} />
-            <span className="font-mono text-xs text-body w-20 shrink-0 truncate">{e.sid}</span>
-            <span className="text-xs text-ink flex-1 truncate">{skillNameMap[e.sid] || ''}</span>
-            <span className="text-xs text-body font-mono shrink-0 mr-1">lv4+ {e.holders_lv4}/{e.holders}명</span>
-            <span className="text-xs font-mono font-medium text-ink shrink-0">{e.difficulty.toFixed(2)}</span>
+            <span className="font-mono text-sm text-body w-20 shrink-0 truncate">{e.sid}</span>
+            <span className="text-sm text-ink flex-1 truncate">{skillNameMap[e.sid] || ''}</span>
+            <span className="text-sm text-body font-mono shrink-0 mr-1">
+              {e.holders > 0 ? Math.round((e.holders_lv4 / e.holders) * 100) : 0}%
+            </span>
+            <span className="text-sm font-mono font-medium text-ink shrink-0 w-10 text-right">{e.difficulty.toFixed(2)}</span>
           </label>
         ))}
       </div>

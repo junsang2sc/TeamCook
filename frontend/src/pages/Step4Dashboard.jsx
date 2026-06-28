@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import Navbar from '../components/layout/Navbar'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
@@ -8,15 +8,39 @@ import useStore from '../store/useStore'
 import { mockPlacementResult } from '../api/mock'
 import { saveToArchive } from '../utils/archive'
 
-const MEMBER_PANEL_W = 280
-const ADJUST_PANEL_W = 320
+const MEMBER_PANEL_W = 260
+const DIST_PANEL_W = 280
 
 export default function Step4Dashboard() {
   const navigate = useNavigate()
   const store = useStore()
-  const { placementResult, placementType, setCurrentStep, skillMatrix, skills, teams, members, conditions, analysisResult, placementMode } = store
+  const { placementResult, placementType, setCurrentStep, skillMatrix, skills, teams, members, conditions, analysisResult, placementMode, currentTeams, currentAssignment, surplusMembers } = store
   const isRe = placementType === 're'
   const data = placementResult || mockPlacementResult
+  const memberMap = Object.fromEntries((members || []).map(m => [m.id, m]))
+
+  // 재배치: changes가 없으면 surplus 멤버 기준으로 직접 계산
+  const reChanges = (() => {
+    if (!isRe) return []
+    if ((data.changes || []).length > 0) return data.changes
+    const surplusIds = new Set((surplusMembers || []).map(m => m.id || m))
+    const result = []
+    for (const [tid, mids] of Object.entries(data.placement || {})) {
+      for (const mid of mids) {
+        if (surplusIds.has(mid)) {
+          result.push({ member_id: mid, from_team: null, to_team: tid })
+        } else {
+          const prev = currentAssignment?.[mid]
+          const prevTid = typeof prev === 'string' ? prev : prev?.currentTeamId
+          if (prevTid && prevTid !== tid) {
+            result.push({ member_id: mid, from_team: prevTid, to_team: tid })
+          }
+        }
+      }
+    }
+    return result
+  })()
+  console.log('[Step4] mounted, placementType:', placementType, 'placementResult:', placementResult, 'placement keys:', Object.keys(data?.placement ?? {}))
 
   // 아카이브 자동 저장
   const savedRef = useRef(false)
@@ -38,8 +62,6 @@ export default function Step4Dashboard() {
 
   const [selectedTeamId, setSelectedTeamId] = useState(null)
   const [selectedMember, setSelectedMember] = useState(null)
-  const [nlInput, setNlInput] = useState('')
-  const [nlParsed, setNlParsed] = useState(null)
   const [history, setHistory] = useState([])
   const [impactOpen, setImpactOpen] = useState(false)
   const [showOnlyWarning, setShowOnlyWarning] = useState(false)
@@ -54,12 +76,6 @@ export default function Step4Dashboard() {
   const warningTeamIds = new Set(Object.keys(warningsByTeam))
   const hasTeamWarnings = warningTeamIds.size > 0
 
-  const handleParseNL = () => {
-    if (!nlInput.trim()) return
-    setNlParsed(`"${nlInput}" — 해석 완료: 조건을 분석하여 재배치를 실행합니다.`)
-  }
-  const handleApply = () => { setHistory([...history, nlInput]); setNlParsed(null); setNlInput('') }
-
   const exportCSV = () => {
     const rows = [['팀', '구성원ID', '이름']]
     Object.entries(data.placement || {}).forEach(([teamId, ms]) => {
@@ -73,7 +89,7 @@ export default function Step4Dashboard() {
   }
 
   const totalFulfillment = Math.round((data.scores?.conditionFulfillment ?? 0) * 100)
-  const rightOffset = ADJUST_PANEL_W + (selectedTeamId ? MEMBER_PANEL_W : 0)
+  const rightOffset = selectedTeamId ? MEMBER_PANEL_W + DIST_PANEL_W : 0
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -87,120 +103,114 @@ export default function Step4Dashboard() {
           warningTeamIds={warningTeamIds}
           showOnlyWarning={showOnlyWarning}
           hasTeamWarnings={hasTeamWarnings}
+          conditions={conditions}
           onWarningClick={() => {
             if (!hasTeamWarnings) return
             setShowOnlyWarning(v => !v)
             teamGridRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
           }}
+          onAdjust={() => { setCurrentStep(5); navigate('/step/5') }}
+          onExportCSV={exportCSV}
         />
       </div>
 
       {/* 메인 콘텐츠 */}
       <div style={{ marginRight: `${rightOffset}px`, marginTop: 'calc(69px + 64px)' }}>
         <main className="overflow-auto p-6 space-y-4" style={{ height: 'calc(100vh - 69px - 64px)' }}>
-          <div ref={teamGridRef}>
-            {showOnlyWarning && warningTeamIds.size > 0 && (
-              <div className="mb-3 flex items-center gap-2">
-                <span className="text-xs text-accent-coral font-medium">⚠ 미충족 팀 {warningTeamIds.size}개만 표시 중</span>
-                <button onClick={() => setShowOnlyWarning(false)} className="text-xs text-body underline hover:text-ink">전체 보기</button>
-              </div>
-            )}
-            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
-              {Object.entries(data.placement || {})
-                .filter(([tid]) => !showOnlyWarning || warningTeamIds.has(tid))
-                .map(([teamId, memberIds]) => (
-                  <TeamCard
-                    key={teamId}
-                    teamId={teamId}
-                    memberIds={memberIds}
-                    data={data}
-                    skillMatrix={skillMatrix}
-                    skills={skills}
-                    teams={teams}
-                    warnings={warningsByTeam[teamId] || []}
-                    isSelected={selectedTeamId === teamId}
-                    onSelect={() => setSelectedTeamId(tid => tid === teamId ? null : teamId)}
-                  />
-                ))}
-            </div>
-          </div>
+          {/* 재배치 인원 현황 + 팀 영향도 */}
+          {isRe && reChanges.length > 0 && (
+            <>
+              <ReplacementChangesPanel
+                changes={reChanges}
+                memberMap={memberMap}
+                teamNames={data.teamNames || {}}
+                currentTeams={currentTeams || []}
+              />
+              <ReplacementImpactPanel
+                changes={reChanges}
+                memberMap={memberMap}
+                members={members || []}
+                currentTeams={currentTeams || []}
+                currentAssignment={currentAssignment || {}}
+                skillMatrix={skillMatrix || {}}
+                skills={skills || []}
+                teamNames={data.teamNames || {}}
+                conditions={conditions}
+              />
+            </>
+          )}
 
-          {/* 배치 전후 영향도 */}
-          <div className="border border-hairline rounded-md overflow-hidden">
-            <button
-              className="w-full px-5 py-3 bg-muted flex items-center justify-between text-sm font-medium text-ink"
-              onClick={() => setImpactOpen(!impactOpen)}
-            >
-              <span>배치 전후 영향도</span>
-              <span>{impactOpen ? '▲' : '▼'}</span>
-            </button>
-            {impactOpen && <ImpactChart data={data} />}
-          </div>
-        </main>
-      </div>
-
-      {/* 중간 패널: 팀 구성원 */}
-      {selectedTeamId && (
-        <aside
-          className="fixed bottom-0 border-l border-hairline bg-surface flex flex-col z-10 overflow-auto"
-          style={{ top: 'calc(69px + 64px)', right: `${ADJUST_PANEL_W}px`, width: `${MEMBER_PANEL_W}px` }}
-        >
-          <TeamMemberPanel
-            teamId={selectedTeamId}
-            memberIds={data.placement?.[selectedTeamId] || []}
-            data={data}
-            skillMatrix={skillMatrix}
-            skills={skills}
-            teams={teams}
-            warnings={warningsByTeam[selectedTeamId] || []}
-            onSelectMember={(mid) => setSelectedMember({ mid, teamId: selectedTeamId })}
-            onClose={() => setSelectedTeamId(null)}
-          />
-        </aside>
-      )}
-
-      {/* 우측 패널: 배치 조정 */}
-      <aside
-        className="fixed right-0 bottom-0 border-l border-hairline bg-surface flex flex-col z-10 overflow-auto"
-        style={{ top: 'calc(69px + 64px)', width: `${ADJUST_PANEL_W}px` }}
-      >
-        <div className="p-5 border-b border-hairline">
-          <h3 className="text-sm font-semibold text-ink mb-4">배치 조정 요청</h3>
-          <textarea
-            value={nlInput}
-            onChange={e => setNlInput(e.target.value)}
-            placeholder={`예시:\n"000이랑 ***은 같은 팀이면 안돼"\n"P003을 000이 꼭 해야해"`}
-            className="w-full h-24 border border-hairline rounded-md px-3 py-2 text-sm text-ink resize-none focus:outline-none focus:border-primary mb-2"
-          />
-          <Button size="sm" className="w-full" onClick={handleParseNL}>요청 보내기</Button>
-          <div className="flex gap-2 mt-2">
-            <Button variant="outline" size="sm" className="flex-1"
-              onClick={() => { setCurrentStep(5); navigate('/step/5') }}>
-              수동 조정하기
-            </Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={exportCSV}>
-              CSV 내보내기
-            </Button>
-          </div>
-          {nlParsed && (
-            <div className="mt-3 p-3 bg-primary-tint border border-primary/20 rounded-md">
-              <p className="text-xs text-primary-dark mb-3">{nlParsed}</p>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleApply}>적용</Button>
-                <Button variant="outline" size="sm" onClick={() => setNlParsed(null)}>취소</Button>
+          {!isRe && (
+            <div ref={teamGridRef}>
+              {showOnlyWarning && warningTeamIds.size > 0 && (
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="text-xs text-accent-coral font-medium">⚠ 미충족 팀 {warningTeamIds.size}개만 표시 중</span>
+                  <button onClick={() => setShowOnlyWarning(false)} className="text-xs text-body underline hover:text-ink">전체 보기</button>
+                </div>
+              )}
+              <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+                {Object.entries(data.placement || {})
+                  .filter(([tid]) => !showOnlyWarning || warningTeamIds.has(tid))
+                  .map(([teamId, memberIds]) => (
+                    <TeamCard
+                      key={teamId}
+                      teamId={teamId}
+                      memberIds={memberIds}
+                      data={data}
+                      skillMatrix={skillMatrix}
+                      skills={skills}
+                      teams={teams}
+                      warnings={warningsByTeam[teamId] || []}
+                      isSelected={selectedTeamId === teamId}
+                      onSelect={() => setSelectedTeamId(tid => tid === teamId ? null : teamId)}
+                    />
+                  ))}
               </div>
             </div>
           )}
-        </div>
-        {history.length > 0 && (
-          <div className="p-5 border-b border-hairline">
-            <h4 className="text-xs font-mono text-body uppercase tracking-wider mb-3">조정 이력</h4>
-            <div className="space-y-1">
-              {history.map((h, i) => <p key={i} className="text-xs text-body">· {h}</p>)}
-            </div>
-          </div>
-        )}
-      </aside>
+
+        </main>
+      </div>
+
+      {/* 우측 사이드바: 구성원 목록 + 분포 */}
+      {selectedTeamId && (
+        <>
+          {/* 분포 패널 (맨 우측) */}
+          <aside
+            className="fixed bottom-0 border-l border-hairline bg-surface flex flex-col z-10 overflow-auto"
+            style={{ top: 'calc(69px + 64px)', right: 0, width: `${DIST_PANEL_W}px` }}
+          >
+            <DistributionPanel
+              teamId={selectedTeamId}
+              memberIds={data.placement?.[selectedTeamId] || []}
+              data={data}
+              skillMatrix={skillMatrix}
+              skills={skills}
+              teams={teams}
+              members={members}
+            />
+          </aside>
+          {/* 구성원 목록 패널 (분포 패널 왼쪽) */}
+          <aside
+            className="fixed bottom-0 border-l border-hairline bg-surface flex flex-col z-10"
+            style={{ top: 'calc(69px + 64px)', right: `${DIST_PANEL_W}px`, width: `${MEMBER_PANEL_W}px` }}
+          >
+            <TeamMemberPanel
+              teamId={selectedTeamId}
+              memberIds={data.placement?.[selectedTeamId] || []}
+              data={data}
+              skillMatrix={skillMatrix}
+              skills={skills}
+              teams={teams}
+              members={members}
+              warnings={warningsByTeam[selectedTeamId] || []}
+              onSelectMember={(mid) => setSelectedMember({ mid, teamId: selectedTeamId })}
+              onClose={() => setSelectedTeamId(null)}
+            />
+          </aside>
+        </>
+      )}
+
 
       {/* 구성원 세부정보 팝업 */}
       {selectedMember && (
@@ -211,6 +221,7 @@ export default function Step4Dashboard() {
           skillMatrix={skillMatrix}
           skills={skills}
           teams={teams}
+          members={members}
           onClose={() => setSelectedMember(null)}
         />
       )}
@@ -219,7 +230,7 @@ export default function Step4Dashboard() {
 }
 
 // ─── SummaryBar ───────────────────────────────────────────────────────────────
-function SummaryBar({ data, fulfillment, warningTeamIds, showOnlyWarning, hasTeamWarnings, onWarningClick }) {
+function SummaryBar({ data, fulfillment, warningTeamIds, showOnlyWarning, hasTeamWarnings, onWarningClick, conditions, onAdjust, onExportCSV }) {
   const coverages = Object.values(data.scores?.coverage || {})
   const avgCoverage = coverages.length
     ? Math.round(coverages.reduce((a, b) => a + b, 0) / coverages.length * 100)
@@ -233,7 +244,7 @@ function SummaryBar({ data, fulfillment, warningTeamIds, showOnlyWarning, hasTea
         <div className="text-xs text-body mb-0.5">
           최소 레벨 충족률
           {conditions?.minSkillLevel != null && (
-            <span className="ml-1.5 font-mono text-[10px] text-body">(하한 {conditions.minSkillLevel})</span>
+            <span className="ml-1.5 font-mono text-[10px] text-body">(하한 {Number(conditions.minSkillLevel).toFixed(1)})</span>
           )}
         </div>
         <div className="text-2xl font-bold text-primary">{fulfillment}%</div>
@@ -262,7 +273,21 @@ function SummaryBar({ data, fulfillment, warningTeamIds, showOnlyWarning, hasTea
           )}
         </button>
       )}
-      <div className="text-xs text-body">{totalMembers}명 배치</div>
+      <div className="text-xs text-body shrink-0">{totalMembers}명 배치</div>
+      <div className="flex items-center gap-2 ml-auto shrink-0">
+        <button
+          onClick={onAdjust}
+          className="px-3 py-1.5 rounded-sm border border-hairline text-xs font-medium text-ink hover:bg-muted transition-colors"
+        >
+          수동 조정하기
+        </button>
+        <button
+          onClick={onExportCSV}
+          className="px-3 py-1.5 rounded-sm border border-hairline text-xs font-medium text-ink hover:bg-muted transition-colors"
+        >
+          CSV 내보내기
+        </button>
+      </div>
     </div>
   )
 }
@@ -398,7 +423,7 @@ function TeamCard({ teamId, memberIds, data, skillMatrix, skills, teams, warning
 }
 
 // ─── TeamMemberPanel (중간 패널) ──────────────────────────────────────────────
-function TeamMemberPanel({ teamId, memberIds, data, skillMatrix, skills, teams, warnings, onSelectMember, onClose }) {
+function TeamMemberPanel({ teamId, memberIds, data, skillMatrix, skills, teams, members, warnings, onSelectMember, onClose }) {
   const teamName = data.teamNames?.[teamId] || teamId
   const coverage = Math.round((data.scores?.coverage?.[teamId] ?? 0) * 100)
   const skillNameMap = (skills || []).reduce((acc, s) => { acc[s.id] = s.name; return acc }, {})
@@ -413,10 +438,10 @@ function TeamMemberPanel({ teamId, memberIds, data, skillMatrix, skills, teams, 
   return (
     <>
       {/* 패널 헤더 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-hairline shrink-0">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-hairline shrink-0">
         <div>
-          <div className="text-sm font-semibold text-ink">{teamName}</div>
-          <div className="text-xs text-body">{memberIds.length}명 · 커버리지 {coverage}%</div>
+          <div className="text-base font-semibold text-ink">{teamName}</div>
+          <div className="text-sm text-body">{memberIds.length}명 · 커버리지 {coverage}%</div>
         </div>
         <button onClick={onClose} className="text-body hover:text-ink text-lg px-1">×</button>
       </div>
@@ -435,6 +460,7 @@ function TeamMemberPanel({ teamId, memberIds, data, skillMatrix, skills, teams, 
         <div className="p-4 space-y-2">
           {sortedMembers.map(mid => {
             const name = data.memberNames?.[mid] || mid
+            const memberInfo = (members || []).find(m => m.id === mid)
             const topSkills = getTopSkills(mid, skillMatrix, skills, 3)
             const covers = requiredSkills.filter(sid => (skillMatrix?.[mid]?.[sid] ?? 0) > 0)
             const uniqueContribs = requiredSkills.filter(sid => {
@@ -448,14 +474,22 @@ function TeamMemberPanel({ teamId, memberIds, data, skillMatrix, skills, teams, 
                 className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-md border border-hairline hover:border-primary/40 hover:bg-primary-tint/30 transition-colors text-left"
                 onClick={() => onSelectMember(mid)}
               >
-                <div className="w-7 h-7 rounded-full bg-primary-tint flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-primary-dark">{name[0] || '?'}</span>
-                </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-1">
+                  <div className="flex items-center gap-1.5 mb-0.5">
                     <span className="text-xs font-medium text-ink">{name}</span>
                     {uniqueContribs.length > 0 && (
                       <span className="text-[9px] bg-accent-yellow/20 text-accent-yellow-dark border border-accent-yellow/30 px-1 rounded-sm">핵심</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 mb-1">
+                    {memberInfo?.role && (
+                      <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-sm text-ink font-medium">{memberInfo.role}</span>
+                    )}
+                    {memberInfo?.gender && (
+                      <span className="text-[10px] text-body">{memberInfo.gender}</span>
+                    )}
+                    {memberInfo?.experience != null && memberInfo.experience > 0 && (
+                      <span className="text-[10px] text-body font-mono">경력 {memberInfo.experience}년</span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-0.5">
@@ -478,7 +512,118 @@ function TeamMemberPanel({ teamId, memberIds, data, skillMatrix, skills, teams, 
           })}
         </div>
       </div>
+
     </>
+  )
+}
+
+// ─── DistributionPanel ────────────────────────────────────────────────────────
+const PIE_COLORS = ['#4D9EED', '#4DC2A8', '#FABF4B', '#485671', '#f87171', '#a78bfa']
+
+function DistributionPanel({ teamId, memberIds, data, skillMatrix, skills, teams, members }) {
+  const teamName = data.teamNames?.[teamId] || teamId
+  const teamInfo = (teams || []).find(t => t.id === teamId)
+  const requiredSkills = teamInfo?.requiredSkills || []
+
+  // 스킬 보유 현황
+  const skillData = requiredSkills.map(sid => {
+    const skillName = (skills || []).find(s => s.id === sid)?.name || sid
+    const holders = memberIds.filter(mid => (skillMatrix?.[mid]?.[sid] ?? 0) > 0)
+    const avg = holders.length > 0
+      ? holders.reduce((s, mid) => s + (skillMatrix?.[mid]?.[sid] ?? 0), 0) / holders.length
+      : 0
+    return { name: skillName, 보유자: holders.length, 평균레벨: parseFloat(avg.toFixed(1)) }
+  })
+
+  // 직급 분포
+  const roleCounts = {}
+  memberIds.forEach(mid => {
+    const role = (members || []).find(m => m.id === mid)?.role
+    if (role) roleCounts[role] = (roleCounts[role] || 0) + 1
+  })
+  const roleData = Object.entries(roleCounts).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }))
+
+  // 성별 분포
+  const genderCounts = {}
+  memberIds.forEach(mid => {
+    const gender = (members || []).find(m => m.id === mid)?.gender
+    if (gender) genderCounts[gender] = (genderCounts[gender] || 0) + 1
+  })
+  const genderData = Object.entries(genderCounts).map(([name, value]) => ({ name, value }))
+
+  return (
+    <div className="flex flex-col h-full overflow-auto">
+      <div className="px-4 py-4 border-b border-hairline shrink-0">
+        <div className="text-base font-semibold text-ink">{teamName} 분포</div>
+        <div className="text-sm text-body">{memberIds.length}명</div>
+      </div>
+
+      <div className="flex-1 overflow-auto p-4 space-y-6">
+        {/* 스킬 보유 현황 */}
+        {skillData.length > 0 && (
+          <div>
+            <p className="text-xs font-mono text-body uppercase tracking-wider mb-3">필수 스킬 보유 현황</p>
+            <ResponsiveContainer width="100%" height={skillData.length * 32 + 20}>
+              <BarChart data={skillData} layout="vertical" margin={{ left: 4, right: 28, top: 0, bottom: 0 }}>
+                <XAxis type="number" domain={[0, memberIds.length]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} width={68} />
+                <Tooltip
+                  formatter={(val, name) => [name === '보유자' ? `${val}명` : `Lv${val}`, name]}
+                  contentStyle={{ fontSize: 12 }}
+                />
+                <Bar dataKey="보유자" fill="#4D9EED" radius={[0, 3, 3, 0]} barSize={12} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* 직급 분포 */}
+        {roleData.length > 0 && (
+          <div>
+            <p className="text-xs font-mono text-body uppercase tracking-wider mb-3">직급 분포</p>
+            <ResponsiveContainer width="100%" height={150}>
+              <PieChart>
+                <Pie data={roleData} cx="50%" cy="50%" innerRadius={38} outerRadius={62} dataKey="value" paddingAngle={2}>
+                  {roleData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={(val, name) => [`${val}명`, name]} contentStyle={{ fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {roleData.map((d, i) => (
+                <span key={d.name} className="flex items-center gap-1.5 text-xs text-body">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  {d.name} <span className="font-semibold text-ink">{d.value}명</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 성별 분포 */}
+        {genderData.length > 0 && (
+          <div>
+            <p className="text-xs font-mono text-body uppercase tracking-wider mb-3">성별 분포</p>
+            <ResponsiveContainer width="100%" height={130}>
+              <PieChart>
+                <Pie data={genderData} cx="50%" cy="50%" innerRadius={32} outerRadius={54} dataKey="value" paddingAngle={2}>
+                  {genderData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={(val, name) => [`${val}명`, name]} contentStyle={{ fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-wrap gap-3 mt-2">
+              {genderData.map((d, i) => (
+                <span key={d.name} className="flex items-center gap-1.5 text-xs text-body">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  {d.name} <span className="font-semibold text-ink">{d.value}명</span> ({Math.round(d.value / memberIds.length * 100)}%)
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -493,8 +638,9 @@ function getTopSkills(memberId, skillMatrix, skills, n = 3) {
     .map(([sid, level]) => ({ id: sid, name: skillNameMap[sid] || sid, level }))
 }
 
-function MemberDetailPopup({ memberId, teamId, data, skillMatrix, skills, teams, onClose }) {
+function MemberDetailPopup({ memberId, teamId, data, skillMatrix, skills, teams, members, onClose }) {
   const name = data.memberNames?.[memberId] || memberId
+  const memberInfo = (members || []).find(m => m.id === memberId)
   const allSkills = getTopSkills(memberId, skillMatrix, skills, 999)
   const skillNameMap = (skills || []).reduce((acc, s) => { acc[s.id] = s.name; return acc }, {})
 
@@ -531,7 +677,18 @@ function MemberDetailPopup({ memberId, teamId, data, skillMatrix, skills, teams,
         <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
             <div className="text-base font-semibold text-ink">{name}</div>
-            <div className="text-xs text-body">{memberId} · {data.teamNames?.[teamId] || teamId}</div>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              {memberInfo?.role && (
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-sm text-ink font-medium">{memberInfo.role}</span>
+              )}
+              {memberInfo?.gender && (
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-sm text-body">{memberInfo.gender}</span>
+              )}
+              {memberInfo?.experience != null && memberInfo.experience > 0 && (
+                <span className="text-xs text-body font-mono">경력 {memberInfo.experience}년</span>
+              )}
+              <span className="text-xs text-body">{memberId} · {data.teamNames?.[teamId] || teamId}</span>
+            </div>
           </div>
           <button onClick={onClose} className="text-body hover:text-ink text-xl leading-none px-1">×</button>
         </div>
@@ -576,8 +733,8 @@ function MemberDetailPopup({ memberId, teamId, data, skillMatrix, skills, teams,
                   <p className="text-[10px] text-body font-mono mb-1.5">팀 내 최고 레벨 보유 스킬</p>
                   <div className="flex flex-wrap gap-1">
                     {bestInTeam.map(s => (
-                      <span key={s.id} className="px-2 py-0.5 bg-surface-dark text-on-dark rounded-sm text-[10px] border border-hairline">
-                        {s.name} Lv{s.level}
+                      <span key={s.id} className="px-2 py-0.5 bg-muted text-ink rounded-sm text-[10px] border border-hairline font-medium">
+                        {s.name} <span className="text-primary-dark">Lv{s.level}</span>
                       </span>
                     ))}
                   </div>
@@ -652,6 +809,274 @@ function ImpactChart({ data }) {
           <Bar dataKey="after" name="배치 후" fill="#2ECC87" radius={[2, 2, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  )
+}
+
+// ─── ReplacementChangesPanel ─────────────────────────────────────────────────
+function ReplacementChangesPanel({ changes, memberMap, teamNames, currentTeams }) {
+  // 팀별로 그룹핑: 새로 합류한 팀 기준
+  const byTeam = {}
+  for (const c of changes) {
+    if (!byTeam[c.to_team]) byTeam[c.to_team] = []
+    byTeam[c.to_team].push(c)
+  }
+
+  const teamName = (tid) => teamNames[tid] || tid
+
+  return (
+    <div className="mb-4 rounded-lg border border-hairline overflow-hidden">
+      <div className="px-5 py-3 bg-muted border-b border-hairline flex items-center gap-3">
+        <span className="text-sm font-semibold text-ink">재배치 인원 현황</span>
+        <span className="text-xs text-body font-mono">{changes.length}명 이동</span>
+      </div>
+      <div className="p-5 bg-surface">
+        <div className="space-y-4">
+          {Object.entries(byTeam).map(([toTeam, items]) => (
+            <div key={toTeam}>
+              <p className="text-xs font-mono text-body uppercase tracking-wider mb-2">
+                → {teamName(toTeam)} 합류 ({items.length}명)
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {items.map(c => {
+                  const m = memberMap[c.member_id]
+                  return (
+                    <div key={c.member_id}
+                      className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 bg-primary/5 border border-primary/20 rounded-full">
+                      <div className="w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center text-[11px] font-mono font-semibold shrink-0">
+                        {(m?.name || c.member_id).slice(0, 2)}
+                      </div>
+                      <div className="leading-tight">
+                        <div className="text-xs font-medium text-ink">
+                          {m?.name || c.member_id}
+                          {m?.role && <span className="ml-1 text-body font-normal">{m.role}</span>}
+                        </div>
+                        {c.from_team && (
+                          <div className="text-[10px] text-body font-mono">
+                            {teamName(c.from_team)} → {teamName(c.to_team)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── ReplacementImpactPanel ───────────────────────────────────────────────────
+const PIE_COLORS_RE = ['#4D9EED', '#4DC2A8', '#FABF4B', '#485671', '#f87171', '#a78bfa']
+
+function ReplacementImpactPanel({ changes, memberMap, members, currentTeams, currentAssignment, skillMatrix, skills, teamNames, conditions }) {
+  const { PieChart: PC, Pie: P, Cell: CL, Tooltip: TT, ResponsiveContainer: RC } = { PieChart, Pie, Cell, Tooltip, ResponsiveContainer }
+  const minLevel = conditions?.minSkillLevel ?? 2.8
+
+  // 새로 합류한 인원이 있는 팀만 (to_team 기준)
+  const affectedTeamIds = [...new Set(changes.map(c => c.to_team))]
+
+  // 멤버 → 기존팀 맵
+  const getMemberOrigTeam = (mid) => {
+    const v = currentAssignment[mid]
+    return typeof v === 'string' ? v : v?.currentTeamId ?? null
+  }
+
+  const skillName = (sid) => skills.find(s => s.id === sid)?.name ?? sid
+
+  const makePie = (mems, keyFn) => {
+    const counts = {}
+    mems.forEach(m => { const k = keyFn(m) || '미입력'; counts[k] = (counts[k] || 0) + 1 })
+    return Object.entries(counts).map(([name, value]) => ({ name, value }))
+  }
+
+  return (
+    <div className="rounded-lg border border-hairline overflow-hidden mb-4">
+      <div className="px-5 py-3 bg-muted border-b border-hairline flex items-center gap-3">
+        <span className="text-sm font-semibold text-ink">기존 팀 영향도 (영입 전/후)</span>
+        <span className="text-xs text-body font-mono">{affectedTeamIds.length}개 팀 변동</span>
+      </div>
+      <div className="divide-y divide-hairline">
+        {affectedTeamIds.map(toTeam => {
+          const team = currentTeams.find(t => t.id === toTeam)
+          const newMemberIds = changes.filter(c => c.to_team === toTeam).map(c => c.member_id)
+          const newMembers = newMemberIds.map(mid => memberMap[mid]).filter(Boolean)
+
+          // 기존 팀원 (영입 전)
+          const beforeMembers = members.filter(m => getMemberOrigTeam(m.id) === toTeam)
+          // 영입 후 = 기존 팀원 + 신규
+          const afterMembers = [...beforeMembers, ...newMembers]
+
+          const requiredSkills = team?.requiredSkills || []
+
+          // 스킬별 평균 레벨 before/after
+          const avgLevel = (mems, sid) => {
+            if (!mems.length) return 0
+            return mems.reduce((s, m) => s + (skillMatrix[m.id]?.[sid] ?? 0), 0) / mems.length
+          }
+
+          const tName = teamNames[toTeam] || toTeam
+          const rolePieBefore = makePie(beforeMembers, m => m.role)
+          const rolePieAfter = makePie(afterMembers, m => m.role)
+          const genderPieBefore = makePie(beforeMembers, m => m.gender)
+          const genderPieAfter = makePie(afterMembers, m => m.gender)
+
+          return (
+            <div key={toTeam} className="bg-surface">
+              {/* 헤더 */}
+              <div className="flex items-center gap-3 px-5 py-3.5 border-b border-hairline">
+                <span className="text-base font-bold font-mono text-ink">{toTeam}</span>
+                {team?.name && team.name !== toTeam && <span className="text-sm text-body">{team.name}</span>}
+                <div className="ml-auto flex items-center gap-1.5 text-sm">
+                  <span className="font-mono font-medium text-ink">{beforeMembers.length}</span>
+                  <span className="text-body text-xs">명</span>
+                  <span className="text-body mx-1">→</span>
+                  <span className="font-mono font-medium text-ink">{afterMembers.length}</span>
+                  <span className="text-body text-xs">명</span>
+                  <span className="ml-2 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                    +{newMembers.length}명 합류
+                  </span>
+                </div>
+              </div>
+
+              {/* 신규 합류 인원 */}
+              <div className="px-5 py-3 bg-primary/5 border-b border-hairline">
+                <p className="text-[11px] font-mono text-primary uppercase tracking-wider mb-2">↗ 새로 합류한 인원</p>
+                <div className="flex flex-wrap gap-2">
+                  {newMembers.map(m => (
+                    <div key={m.id} className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 bg-surface border border-primary/30 rounded-full">
+                      <div className="w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center text-[11px] font-mono font-semibold shrink-0">
+                        {m.name?.slice(0, 2)}
+                      </div>
+                      <div className="leading-tight">
+                        <div className="text-xs font-medium text-ink">{m.name} <span className="text-body font-normal">{m.role}</span></div>
+                        <div className="text-[10px] text-body font-mono">잉여 인력 → {tName}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 스킬 커버리지 요약 */}
+              {requiredSkills.length > 0 && (() => {
+                const covBefore = requiredSkills.filter(sid => beforeMembers.some(m => (skillMatrix[m.id]?.[sid] ?? 0) > 0)).length
+                const covAfter = requiredSkills.filter(sid => afterMembers.some(m => (skillMatrix[m.id]?.[sid] ?? 0) > 0)).length
+                const pctBefore = Math.round(covBefore / requiredSkills.length * 100)
+                const pctAfter = Math.round(covAfter / requiredSkills.length * 100)
+                return (
+                  <div className="px-5 py-3 border-b border-hairline bg-teal/5 flex items-center gap-6">
+                    <span className="text-xs font-mono text-body uppercase tracking-wider">스킬 커버리지</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-mono text-body">{pctBefore}%</span>
+                      <span className="text-body text-xs">({covBefore}/{requiredSkills.length})</span>
+                      <span className="text-body mx-1">→</span>
+                      <span className="text-sm font-mono font-bold text-teal">{pctAfter}%</span>
+                      <span className="text-xs text-body">({covAfter}/{requiredSkills.length})</span>
+                      {pctAfter > pctBefore && (
+                        <span className="ml-1 px-2 py-0.5 rounded-full bg-teal/15 text-teal text-xs font-medium">
+                          +{pctAfter - pctBefore}%p 개선
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* 스킬/분포 변화 */}
+              <div className="px-5 py-4 grid grid-cols-5 gap-6">
+                {/* 필수 스킬 평균 레벨 변화 */}
+                <div className="col-span-3">
+                  <p className="text-[11px] font-mono text-body uppercase tracking-wider mb-3">필수 스킬 평균 레벨 변화</p>
+                  {requiredSkills.length === 0 ? (
+                    <p className="text-xs text-body">필수 스킬 정보 없음</p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {requiredSkills.map(sid => {
+                        const before = avgLevel(beforeMembers, sid)
+                        const after = avgLevel(afterMembers, sid)
+                        const diff = after - before
+                        const dropped = after < minLevel
+                        return (
+                          <div key={sid}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-ink truncate max-w-[60%]">{skillName(sid)}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="font-mono text-sm text-body">{before.toFixed(1)}</span>
+                                <span className="text-body text-xs">→</span>
+                                <span className={`font-mono text-sm font-bold ${dropped ? 'text-[#dc2626]' : 'text-ink'}`}>{after.toFixed(1)}</span>
+                                <span className={`text-xs font-mono font-medium w-10 text-right ${diff < 0 ? 'text-[#dc2626]' : 'text-teal'}`}>
+                                  {diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="relative h-2 bg-muted rounded-full overflow-hidden">
+                              <div className="absolute inset-y-0 left-0 bg-muted-dark/30 rounded-full" style={{ width: `${Math.min(before/5*100,100)}%` }} />
+                              <div className={`absolute inset-y-0 left-0 rounded-full transition-all ${dropped ? 'bg-[#dc2626]' : 'bg-primary'}`} style={{ width: `${Math.min(after/5*100,100)}%` }} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 성별 분포 */}
+                <div className="col-span-1">
+                  <p className="text-[11px] font-mono text-body uppercase tracking-wider mb-2">성별 분포</p>
+                  <MiniReBeforeAfterPie before={genderPieBefore} after={genderPieAfter} />
+                </div>
+
+                {/* 직급 분포 */}
+                <div className="col-span-1">
+                  <p className="text-[11px] font-mono text-body uppercase tracking-wider mb-2">직급 분포</p>
+                  <MiniReBeforeAfterPie before={rolePieBefore} after={rolePieAfter} />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function MiniReBeforeAfterPie({ before, after }) {
+  const allKeys = [...new Set([...before.map(d => d.name), ...after.map(d => d.name)])]
+  const colorMap = Object.fromEntries(allKeys.map((k, i) => [k, PIE_COLORS_RE[i % PIE_COLORS_RE.length]]))
+
+  return (
+    <div className="space-y-3">
+      {[{ label: '영입 전', data: before }, { label: '영입 후', data: after }].map(({ label, data }) => {
+        const total = data.reduce((s, d) => s + d.value, 0)
+        return (
+          <div key={label}>
+            <p className="text-[10px] font-mono text-body mb-1">{label}</p>
+            <div className="flex items-center gap-2">
+              <ResponsiveContainer width={60} height={60}>
+                <PieChart>
+                  <Pie data={data} cx="50%" cy="50%" outerRadius={28} dataKey="value" paddingAngle={2}>
+                    {data.map((d) => <Cell key={d.name} fill={colorMap[d.name]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v, n) => [`${v}명`, n]} contentStyle={{ fontSize: 10 }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                {data.map(d => (
+                  <span key={d.name} className="flex items-center gap-1 text-xs text-body">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorMap[d.name] }} />
+                    <span className="truncate">{d.name}</span>
+                    <span className="font-mono font-medium text-ink shrink-0">{d.value}명</span>
+                    <span className="text-[10px] text-body shrink-0">({Math.round(d.value/total*100)}%)</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -13,23 +13,25 @@ from typing import Any
 import numpy as np
 import pulp
 
-ROLE_MAP: dict[str, float] = {
-    "부장": 5, "차장": 4, "과장": 3, "대리": 2, "사원": 1,
-    "팀장급": 5, "중간급": 3, "주니어": 1,
-    "senior": 5, "lead": 5, "manager": 4, "mid": 3, "staff": 2, "junior": 1, "intern": 1,
-}
-HOLD_LEVEL  = 1
-MIN_REMAIN  = 1
-TIME_LIMIT  = 300
-GAP         = 0.01
+HOLD_LEVEL      = 1
+MIN_REMAIN      = 1
+TIME_LIMIT      = 300
+GAP             = 0.01
+RANK_LAM_MULT   = 5.0  # 직위 균형 패널티 배율
 
 
 def _to_female(gender: str) -> float:
     return 1.0 if (gender or "").strip().lower() in {"여", "f", "female", "w", "woman"} else 0.0
 
 
-def _to_rank(role: str) -> float:
-    return float(ROLE_MAP.get((role or "").strip(), 0))
+def _role_vectors(roles: list[str]) -> tuple[list[str], list[list[float]], list[float]]:
+    role_types = sorted(set(r for r in roles if r))
+    if not role_types:
+        return [], [[]] * len(roles), []
+    n = len(roles)
+    one_hot = [[1.0 if role == r else 0.0 for r in role_types] for role in roles]
+    global_ratio = [sum(oh[ri] for oh in one_hot) / n for ri in range(len(role_types))]
+    return role_types, one_hot, global_ratio
 
 
 def _get_solver(msg: bool = False):
@@ -186,11 +188,10 @@ def _calc_lambda(
     def lvl(mid: str, sid: str) -> float:
         return float(skill_matrix.get(mid, {}).get(sid, 0.0))
 
-    all_fem = [_to_female(m.get("gender", "")) for m in members]
-    all_rk  = [_to_rank(m.get("role", "")) for m in members]
-    known_r = [v for v in all_rk if v > 0]
-    pool_f  = sum(all_fem) / len(all_fem) if all_fem else 0.5
-    pool_r  = sum(v if v > 0 else (sum(known_r)/len(known_r) if known_r else 3.0) for v in all_rk) / len(all_rk) if all_rk else 3.0
+    all_fem   = [_to_female(m.get("gender", "")) for m in members]
+    all_roles = [str(m.get("role") or "").strip() for m in members]
+    pool_f    = sum(all_fem) / len(all_fem) if all_fem else 0.5
+    role_types, _, global_ratio = _role_vectors(all_roles)
 
     n_c = len(cand_ids)
     mid_to_m = {m["id"]: m for m in members}
@@ -239,28 +240,33 @@ def _calc_lambda(
                     f_lv = sum(lvl(f_mid, sid) for sid in req_s)
                     g_costs.append((m_lv - f_lv) / team_fit)
 
-        # 직급
-        avg_rk = sum(_to_rank(mid_to_m.get(mid,{}).get("role","")) for mid in remaining) / n_remain
-        if abs(avg_rk - pool_r) >= 0.3:
-            if avg_rk > pool_r:
-                hi = [mid for mid in remaining if _to_rank(mid_to_m.get(mid,{}).get("role","")) > pool_r]
-                lo = [cand_ids[i] for i in range(n_c) if _to_rank(mid_to_m.get(cand_ids[i],{}).get("role","")) < pool_r and cand_ids[i] not in removed]
-                for h in hi[:10]:
-                    h_lv = sum(lvl(h, sid) for sid in req_s)
-                    for lo_mid in lo[:20]:
-                        lo_lv = sum(lvl(lo_mid, sid) for sid in req_s)
-                        r_costs.append((h_lv - lo_lv) / team_fit)
+        # 직위 다양성
+        cand_roles = [str(mid_to_m.get(cand_ids[i],{}).get("role","")).strip() for i in range(n_c)]
+        _, one_hot_c, _ = _role_vectors(cand_roles)
+        remain_roles = [str(mid_to_m.get(mid,{}).get("role","")).strip() for mid in remaining]
+        for ri, r in enumerate(role_types):
+            actual   = sum(1 for ro in remain_roles if ro == r)
+            expected = global_ratio[ri] * n_remain
+            if actual >= expected:
+                continue
+            wrong_in  = [mid for mid in remaining if str(mid_to_m.get(mid,{}).get("role","")).strip() != r]
+            right_out = [cand_ids[i] for i in range(n_c)
+                         if str(mid_to_m.get(cand_ids[i],{}).get("role","")).strip() == r
+                         and cand_ids[i] not in removed]
+            for wi in wrong_in[:10]:
+                wi_lv = sum(lvl(wi, sid) for sid in req_s)
+                for ro in right_out[:20]:
+                    ro_lv = sum(lvl(ro, sid) for sid in req_s)
+                    r_costs.append((wi_lv - ro_lv) / team_fit)
 
     n_p = len(allowed_ids) if allowed_ids else 1
     fit_mean = fit1_total / n_p
     avg_ts   = n_c / n_p
     fem_c    = [_to_female(mid_to_m.get(mid, {}).get("gender","")) for mid in cand_ids]
-    rk_c     = [_to_rank(mid_to_m.get(mid, {}).get("role","")) for mid in cand_ids]
-    rk_std   = float(np.std(rk_c)) if len(rk_c) > 1 else 1.0
     g_rate   = statistics.median(g_costs) if g_costs else 0.05
     r_rate   = statistics.median(r_costs) if r_costs else 0.05
     LAM_GENDER = (fit_mean * g_rate / (avg_ts * pool_f)) if pool_f > 0 else 2.7
-    LAM_RANK   = (fit_mean * r_rate / rk_std)             if rk_std > 0 else 2.7
+    LAM_RANK   = max(fit_mean * r_rate * RANK_LAM_MULT, fit_mean * RANK_LAM_MULT * 0.1)
     return LAM_COV, LAM_GENDER, LAM_RANK
 
 
@@ -311,7 +317,8 @@ def run_tf(
     team_skill_sum:  dict[tuple, float] = {}
     team_skill_hold: dict[tuple, int]   = {}
     team_fem_count:  dict[str, float]   = {pid: 0.0 for pid in P}
-    team_rank_sum:   dict[str, float]   = {pid: 0.0 for pid in P}
+    # 직위별 팀 인원 수: { (tid, role): count }
+    team_role_count: dict[tuple, int]   = {}
 
     for m in members:
         tid = (m.get("current_team_id") or "").strip()
@@ -319,22 +326,22 @@ def run_tf(
             continue
         Nj[tid]              += 1
         team_fem_count[tid]  += _to_female(m.get("gender", ""))
-        team_rank_sum[tid]   += _to_rank(m.get("role", ""))
+        role = str(m.get("role") or "").strip()
+        if role:
+            team_role_count[(tid, role)] = team_role_count.get((tid, role), 0) + 1
         for sid, lv_val in skill_matrix.get(m["id"], {}).items():
             k = (tid, sid)
             team_skill_sum[k]  = team_skill_sum.get(k, 0.0) + float(lv_val)
             if float(lv_val) >= HOLD_LEVEL:
                 team_skill_hold[k] = team_skill_hold.get(k, 0) + 1
 
-    all_fem = [_to_female(m.get("gender", "")) for m in members]
-    all_rk  = [_to_rank(m.get("role", ""))    for m in members]
-    known_r = [v for v in all_rk if v > 0]
-    default_r = sum(known_r) / len(known_r) if known_r else 3.0
-    pool_f  = sum(all_fem) / len(all_fem) if all_fem else 0.5
-    pool_r  = sum(v if v > 0 else default_r for v in all_rk) / len(all_rk) if all_rk else default_r
-    fem_c   = [_to_female(m.get("gender", "")) for m in candidates]
-    rk_c    = [v if (v := _to_rank(m.get("role", ""))) > 0 else default_r for m in candidates]
-    rk_std  = float(np.std(rk_c)) if len(rk_c) > 1 else 1.0
+    all_fem   = [_to_female(m.get("gender", "")) for m in members]
+    all_roles = [str(m.get("role") or "").strip() for m in members]
+    pool_f    = sum(all_fem) / len(all_fem) if all_fem else 0.5
+    role_types, _, global_ratio = _role_vectors(all_roles)
+    fem_c     = [_to_female(m.get("gender", "")) for m in candidates]
+    cand_roles= [str(m.get("role") or "").strip() for m in candidates]
+    one_hot_c = [[1.0 if cand_roles[i] == r else 0.0 for r in role_types] for i in range(n_c)]
 
     F_vec = [float(fit_vector.get(mid, 0.0)) for mid in cand_ids]
     solver = _get_solver()
@@ -450,16 +457,23 @@ def run_tf(
             prob2  += ((team_fem_count[tid] - ext_fem) - pool_f * (Nj[tid] - ext_cnt) == dp - dm)
             obj2   -= LAM_GENDER * (dp + dm)
 
-    # 소프트 ③ 직급 균형
-    if enable_rank:
+    # 소프트 ③ 직위 다양성 균형 (잔류 팀 기준, 카테고리별)
+    if enable_rank and role_types:
         for tid in allowed_ids:
-            p_idxs = [i for i, t in enumerate(cand_team) if t == tid]
-            dp = pulp.LpVariable(f"rdp_{tid[:10]}", lowBound=0)
-            dm = pulp.LpVariable(f"rdm_{tid[:10]}", lowBound=0)
-            ext_rk  = pulp.lpSum(rk_c[i] * x2[i] for i in p_idxs)
+            p_idxs  = [i for i, t in enumerate(cand_team) if t == tid]
             ext_cnt = pulp.lpSum(x2[i] for i in p_idxs)
-            prob2  += ((team_rank_sum[tid] - ext_rk) - pool_r * (Nj[tid] - ext_cnt) == dp - dm)
-            obj2   -= LAM_RANK * (dp + dm)
+            for ri, r in enumerate(role_types):
+                dp = pulp.LpVariable(f"rdp_{tid[:8]}_{ri}", lowBound=0)
+                dm = pulp.LpVariable(f"rdm_{tid[:8]}_{ri}", lowBound=0)
+                fixed_cnt = team_role_count.get((tid, r), 0)
+                ext_role  = pulp.lpSum(one_hot_c[i][ri] * x2[i] for i in p_idxs)
+                # 잔류 = 기존 팀원 - 차출된 인원
+                prob2 += (
+                    (fixed_cnt - ext_role)
+                    - global_ratio[ri] * (Nj[tid] - ext_cnt)
+                    == dp - dm
+                )
+                obj2 -= LAM_RANK * (dp + dm)
 
     prob2 += obj2
     build_t = time.time() - t0

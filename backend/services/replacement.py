@@ -16,25 +16,26 @@ from typing import Any
 import numpy as np
 import pulp
 
-ROLE_MAP: dict[str, float] = {
-    "부장": 5, "차장": 4, "과장": 3, "대리": 2, "사원": 1,
-    "팀장급": 5, "중간급": 3, "주니어": 1,
-    "senior": 5, "lead": 5, "manager": 4, "mid": 3, "staff": 2, "junior": 1, "intern": 1,
-}
-
 HOLD_LEVEL         = 1
 MIN_HOLDERS        = 1
 UNASSIGNED_PENALTY = 100.0
 TIME_LIMIT         = 300
 GAP                = 0.01
+RANK_LAM_MULT      = 5.0  # 직위 균형 패널티 배율
 
 
 def _to_female(gender: str) -> float:
     return 1.0 if (gender or "").strip().lower() in {"여", "f", "female", "w", "woman"} else 0.0
 
 
-def _to_rank(role: str) -> float:
-    return float(ROLE_MAP.get((role or "").strip(), 0))
+def _role_vectors(roles: list[str]) -> tuple[list[str], list[list[float]], list[float]]:
+    role_types = sorted(set(r for r in roles if r))
+    if not role_types:
+        return [], [[]] * len(roles), []
+    n = len(roles)
+    one_hot = [[1.0 if role == r else 0.0 for r in role_types] for role in roles]
+    global_ratio = [sum(oh[ri] for oh in one_hot) / n for ri in range(len(role_types))]
+    return role_types, one_hot, global_ratio
 
 
 def _get_solver(msg: bool = False):
@@ -84,7 +85,8 @@ def _build_base(
     team_skill_sum:    dict[tuple, float] = {}
     team_skill_holders: dict[tuple, int]  = {}
     fixed_female:      dict[str, float]  = {pid: 0.0 for pid in P}
-    fixed_rank_sum:    dict[str, float]  = {pid: 0.0 for pid in P}
+    # 직위별 고정 인원 수: { (pid, role): count }
+    fixed_role_count:  dict[tuple, int]  = {}
 
     for m in existing:
         tid = (m.get("current_team_id") or "").strip()
@@ -92,7 +94,9 @@ def _build_base(
             continue
         Nj_existing[tid]   += 1
         fixed_female[tid]  += _to_female(m.get("gender", ""))
-        fixed_rank_sum[tid] += _to_rank(m.get("role", ""))
+        role = str(m.get("role") or "").strip()
+        if role:
+            fixed_role_count[(tid, role)] = fixed_role_count.get((tid, role), 0) + 1
         for sid, lv in skill_matrix.get(m["id"], {}).items():
             k = (tid, sid)
             team_skill_sum[k]  = team_skill_sum.get(k, 0.0) + float(lv)
@@ -101,15 +105,16 @@ def _build_base(
 
     # ── pool 통계 (전체 기준) ───────────────────────────────────────────────
     all_members = existing + surplus
-    all_fem    = [_to_female(m.get("gender", "")) for m in all_members]
-    all_rk_raw = [_to_rank(m.get("role", "")) for m in all_members]
-    known_r    = [v for v in all_rk_raw if v > 0]
-    default_r  = sum(known_r) / len(known_r) if known_r else 3.0
-    pool_f = sum(all_fem) / len(all_fem) if all_fem else 0.5
-    pool_r = sum(v if v > 0 else default_r for v in all_rk_raw) / len(all_rk_raw) if all_rk_raw else default_r
+    all_fem   = [_to_female(m.get("gender", "")) for m in all_members]
+    all_roles = [str(m.get("role") or "").strip() for m in all_members]
+    pool_f    = sum(all_fem) / len(all_fem) if all_fem else 0.5
+    role_types, one_hot_all, global_ratio = _role_vectors(all_roles)
 
-    fem = [_to_female(m.get("gender", "")) for m in surplus]
-    rk  = [v if (v := _to_rank(m.get("role", ""))) > 0 else default_r for m in surplus]
+    fem      = [_to_female(m.get("gender", "")) for m in surplus]
+    sur_roles= [str(m.get("role") or "").strip() for m in surplus]
+    _, one_hot_sur, _ = _role_vectors(sur_roles) if sur_roles else ([], [[]] * len(surplus), [])
+    # surplus의 one_hot은 전체 role_types 기준으로 재계산
+    one_hot_s = [[1.0 if sur_roles[i] == r else 0.0 for r in role_types] for i in range(n_s)]
 
     def lvl_s(mid: str, sid: str) -> float:
         return float(skill_matrix.get(mid, {}).get(sid, 0.0))
@@ -123,9 +128,10 @@ def _build_base(
         surplus_ids=surplus_ids, n_s=n_s, P=P, req=req,
         Nj_existing=Nj_existing,
         team_skill_sum=team_skill_sum, team_skill_holders=team_skill_holders,
-        fixed_female=fixed_female, fixed_rank_sum=fixed_rank_sum,
-        pool_f=pool_f, pool_r=pool_r, fem=fem, rk=rk,
-        lvl_s=lvl_s, F=F, default_r=default_r,
+        fixed_female=fixed_female, fixed_role_count=fixed_role_count,
+        pool_f=pool_f, role_types=role_types, global_ratio=global_ratio,
+        fem=fem, one_hot_s=one_hot_s,
+        lvl_s=lvl_s, F=F,
     )
 
 
@@ -168,14 +174,15 @@ def _calc_lambda(base: dict, team_1st: dict, fit1_total: float):
     surplus_ids = base["surplus_ids"]
     F      = base["F"]
     fem    = base["fem"]
-    rk     = base["rk"]
     pool_f = base["pool_f"]
-    pool_r = base["pool_r"]
     lvl_s  = base["lvl_s"]
-    Nj_existing     = base["Nj_existing"]
-    team_skill_sum  = base["team_skill_sum"]
-    fixed_female    = base["fixed_female"]
-    fixed_rank_sum  = base["fixed_rank_sum"]
+    Nj_existing      = base["Nj_existing"]
+    team_skill_sum   = base["team_skill_sum"]
+    fixed_female     = base["fixed_female"]
+    fixed_role_count = base["fixed_role_count"]
+    role_types       = base["role_types"]
+    global_ratio     = base["global_ratio"]
+    one_hot_s        = base["one_hot_s"]
 
     # LAM_COV: 필수스킬 보유자↔미보유자 교환 최악 교환비
     max_ratio = 0.0
@@ -221,34 +228,29 @@ def _calc_lambda(base: dict, team_1st: dict, fit1_total: float):
                 for f_idx in f_out[:20]:
                     g_costs.append((F[m_idx][j] - F[f_idx][j]) / team_fit)
 
-        # 직급
-        fixed_r   = fixed_rank_sum[pid]
-        surplus_r = sum(rk[i] for i in mj)
-        avg_rk    = (fixed_r + surplus_r) / total_n if total_n > 0 else 0
-        if abs(avg_rk - pool_r) >= 0.3:
-            if avg_rk > pool_r:
-                hi = [i for i in mj if rk[i] > pool_r]
-                lo = [i for i in range(n_s) if rk[i] < pool_r and i not in mj]
-                for h in hi:
-                    for lo_i in lo[:20]:
-                        r_costs.append((F[h][j] - F[lo_i][j]) / team_fit)
-            else:
-                lo = [i for i in mj if rk[i] < pool_r]
-                hi = [i for i in range(n_s) if rk[i] > pool_r and i not in mj]
-                for lo_i in lo:
-                    for h in hi[:20]:
-                        r_costs.append((F[lo_i][j] - F[h][j]) / team_fit)
+        # 직위 다양성
+        for ri in range(len(role_types)):
+            fixed_cnt = fixed_role_count.get((pid, role_types[ri]), 0)
+            sur_cnt   = sum(one_hot_s[i][ri] for i in mj)
+            actual    = fixed_cnt + sur_cnt
+            expected  = global_ratio[ri] * total_n
+            if actual >= expected:
+                continue
+            wrong_in  = [i for i in mj if one_hot_s[i][ri] == 0]
+            right_out = [i for i in range(n_s) if one_hot_s[i][ri] == 1 and i not in mj]
+            for wi in wrong_in:
+                for ro in right_out[:20]:
+                    r_costs.append((F[wi][j] - F[ro][j]) / team_fit)
 
     n_p           = len(P)
     fit_mean_team = fit1_total / n_p if n_p > 0 else 1.0
     avg_ts        = n_s / n_p if n_p > 0 else 1.0
-    rk_std        = float(np.std(rk)) if len(rk) > 1 else 1.0
 
     g_rate = statistics.median(g_costs) if g_costs else 0.05
     r_rate = statistics.median(r_costs) if r_costs else 0.05
 
     LAM_GENDER = (fit_mean_team * g_rate / (avg_ts * pool_f)) if pool_f > 0 else 0.0
-    LAM_RANK   = (fit_mean_team * r_rate / rk_std)             if rk_std  > 0 else 0.0
+    LAM_RANK   = max(fit_mean_team * r_rate * RANK_LAM_MULT, fit_mean_team * RANK_LAM_MULT * 0.1)
     return LAM_COV, LAM_GENDER, LAM_RANK
 
 
@@ -373,11 +375,8 @@ def run_replacement(
     team_skill_sum   = base["team_skill_sum"]
     team_skill_holders = base["team_skill_holders"]
     fixed_female     = base["fixed_female"]
-    fixed_rank_sum   = base["fixed_rank_sum"]
     pool_f  = base["pool_f"]
-    pool_r  = base["pool_r"]
     fem     = base["fem"]
-    rk      = base["rk"]
     lvl_s   = base["lvl_s"]
     existing = base["existing"]
     surplus  = base["surplus"]
@@ -476,18 +475,25 @@ def run_replacement(
             )
             obj2 -= LAM_GENDER * (dp + dm)
 
-    # 소프트 ③ 직급 균형 (기존 + 신규 합산)
-    if enable_rank:
+    # 소프트 ③ 직위 다양성 균형 (기존 + 신규 합산, 카테고리별)
+    role_types   = base["role_types"]
+    global_ratio = base["global_ratio"]
+    one_hot_s    = base["one_hot_s"]
+    fixed_role_count = base["fixed_role_count"]
+    if enable_rank and role_types:
         for j, pid in enumerate(P):
-            dp = pulp.LpVariable(f"rdp_{j}", lowBound=0)
-            dm = pulp.LpVariable(f"rdm_{j}", lowBound=0)
-            new_count    = pulp.lpSum(x2[(i, j)] for i in range(n_s))
-            new_rank_sum = pulp.lpSum(rk[i] * x2[(i, j)] for i in range(n_s))
-            prob2 += (
-                (fixed_rank_sum[pid] + new_rank_sum) - pool_r * (Nj_existing[pid] + new_count)
-                == dp - dm
-            )
-            obj2 -= LAM_RANK * (dp + dm)
+            new_count = pulp.lpSum(x2[(i, j)] for i in range(n_s))
+            for ri, r in enumerate(role_types):
+                dp = pulp.LpVariable(f"rdp_{j}_{ri}", lowBound=0)
+                dm = pulp.LpVariable(f"rdm_{j}_{ri}", lowBound=0)
+                fixed_cnt    = fixed_role_count.get((pid, r), 0)
+                new_role_cnt = pulp.lpSum(one_hot_s[i][ri] * x2[(i, j)] for i in range(n_s))
+                prob2 += (
+                    (fixed_cnt + new_role_cnt)
+                    - global_ratio[ri] * (Nj_existing[pid] + new_count)
+                    == dp - dm
+                )
+                obj2 -= LAM_RANK * (dp + dm)
 
     prob2 += obj2
     build_t = time.time() - t0

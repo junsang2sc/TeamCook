@@ -27,8 +27,12 @@ export default function Step5Adjust() {
     setBoard(adjustedPlacement || base.placement || {})
   }, [adjustedPlacement, base.placement])
 
-  const memberNames = base.memberNames || {}
+  // placementResult에 memberNames가 있으면 우선 사용, 없으면 members store에서 생성
+  const memberNames = base.memberNames
+    || Object.fromEntries((useStore.getState().members || []).map(m => [m.id, m.name || m.id]))
   const teamNames = base.teamNames || {}
+  // TF 플로우에서 allTeams를 넘긴 경우 그것을 사용, 없으면 teams store
+  const effectiveTeams = base.allTeams || teams || []
   const skillNameMap = (skills || []).reduce((acc, s) => { acc[s.id] = s.name; return acc }, {})
 
   // 현재 보드 기준으로 구성원이 속한 팀 ID
@@ -38,7 +42,7 @@ export default function Step5Adjust() {
   // 배정 근거 스킬: 현재 팀 필수 스킬 중 본인이 보유한 것 (최대 3개)
   const getReasonSkills = (mid, n = 3) => {
     const tid = memberTeamMap[mid]
-    const teamInfo = (teams || []).find(t => t.id === tid)
+    const teamInfo = effectiveTeams.find(t => t.id === tid)
     const required = teamInfo?.requiredSkills || []
     return required
       .filter(sid => (skillMatrix?.[mid]?.[sid] ?? 0) > 0)
@@ -192,7 +196,7 @@ export default function Step5Adjust() {
                     teamNames={teamNames}
                     skillMatrix={skillMatrix}
                     skillNameMap={skillNameMap}
-                    teams={teams}
+                    teams={effectiveTeams}
                     memberNames={memberNames}
                     getReasonSkills={getReasonSkills}
                     onSelectMember={setSelectedMember}

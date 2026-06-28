@@ -82,7 +82,12 @@ def eda(req: EdaRequest):
     diff_result = calc_difficulty(pre_all)
 
     if req.placement_type == "tf":
-        # ── TF 전용: 차출 후보(허용팀 소속) 기준 공급 희귀도 ──────────────────
+        # ── TF: 전체 과제 기준 수요/공급 KSS (신규배치와 동일) ────────────────
+        kss_result = calc_kss(pre_all)
+        tf_skill_set = set(req.tf_required_skills)
+        for sid in kss_result:
+            kss_result[sid]["tf_demand"] = 1 if sid in tf_skill_set else 0
+
         allowed_set = set(req.candidate_team_ids)
         if allowed_set:
             candidate_ids = [
@@ -94,13 +99,6 @@ def eda(req: EdaRequest):
                 m.id for m in req.members
                 if (m.current_team_id or "").strip()
             ]
-
-        kss_result = calc_kss_tf(
-            pre_all=pre_all,
-            candidate_ids=candidate_ids,
-            tf_skills=req.tf_required_skills,
-            tf_size=req.tf_size,
-        )
 
         cand_members = [m for m in members if m.get("id") in set(candidate_ids)]
         pre_cand = preprocess(cand_members, req.skill_matrix, skills, projects)

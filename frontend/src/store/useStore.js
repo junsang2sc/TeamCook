@@ -107,6 +107,7 @@ const useStore = create(
           currentAssignment: currentAssignment || {},
           surplusMembers: surplusMembers || [],
           teams: existingTeams || [],
+          currentTeams: existingTeams || [],
         }),
 
       setTFData: ({ tfId, tfName, tfProject, tfRequiredSkills, currentAssignment, currentTeams, tfResult }) =>

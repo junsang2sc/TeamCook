@@ -158,8 +158,7 @@ def calc_kss(pre: dict[str, Any]) -> dict[str, dict]:
             "kss_norm": round(kss_norm[sid], 4),
             "demand": demand[sid],
             "holders": holders[sid],
-            "is_bottleneck": holders[sid] < demand[sid],
-            "is_spof": holders[sid] <= threshold_5pct and demand[sid] >= 1,
+            "is_spof": demand[sid] > holders[sid],
         }
         for sid in all_skill_ids
     }
@@ -237,8 +236,7 @@ def calc_kss_replacement(
             "kss_norm":           kss_norm[sid],
             "demand":             demand_gap[sid],
             "holders":            holders_surplus[sid],
-            "is_bottleneck":      holders_surplus[sid] < demand_gap[sid] and sid not in external_needed,
-            "is_spof":            holders_surplus[sid] <= threshold_5pct and demand_gap[sid] >= 1,
+            "is_spof":            demand_gap[sid] > holders_surplus[sid],
             "is_external_needed": sid in external_needed,
         }
         for sid in all_skill_ids

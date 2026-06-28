@@ -13,16 +13,11 @@ from typing import Any
 import numpy as np
 import pulp
 
-ROLE_MAP: dict[str, float] = {
-    "부장": 5, "차장": 4, "과장": 3, "대리": 2, "사원": 1,
-    "팀장급": 5, "중간급": 3, "주니어": 1,
-    "senior": 5, "lead": 5, "manager": 4, "mid": 3, "staff": 2, "junior": 1, "intern": 1,
-}
-
 HOLD_LEVEL = 1   # 보유 인정 최소 레벨
 MIN_HOLDERS = 1  # 팀당 필수스킬 보유자 최소 수
 TIME_LIMIT = 120
 GAP = 0.01
+RANK_LAM_MULT = 5.0  # 직위 균형 패널티 배율
 
 
 def _to_female(gender: str) -> float:
@@ -30,8 +25,15 @@ def _to_female(gender: str) -> float:
     return 1.0 if g in {"여", "f", "female", "w", "woman"} else 0.0
 
 
-def _to_rank(role: str) -> float:
-    return float(ROLE_MAP.get((role or "").strip(), 0))
+def _role_vectors(roles: list[str]) -> tuple[list[str], list[list[float]], list[float]]:
+    """직위 카테고리 벡터 생성. 반환: (role_types, one_hot[i], global_ratio[r])"""
+    role_types = sorted(set(r for r in roles if r))
+    if not role_types:
+        return [], [[]] * len(roles), []
+    n = len(roles)
+    one_hot = [[1.0 if role == r else 0.0 for r in role_types] for role in roles]
+    global_ratio = [sum(oh[ri] for oh in one_hot) / n for ri in range(len(role_types))]
+    return role_types, one_hot, global_ratio
 
 
 def _get_solver():
@@ -90,12 +92,9 @@ def run_placement_phase1(
 
     id_to_m = {m["id"]: m for m in members}
     fem    = [_to_female(id_to_m[mid].get("gender", "")) for mid in people]
-    rk_raw = [_to_rank(id_to_m[mid].get("role", "")) for mid in people]
-    known  = [v for v in rk_raw if v > 0]
-    pool_r_default = sum(known) / len(known) if known else 3.0
-    rk     = [v if v > 0 else pool_r_default for v in rk_raw]
+    roles  = [str(id_to_m[mid].get("role") or "").strip() for mid in people]
+    role_types, one_hot, global_ratio = _role_vectors(roles)
     pool_f = sum(fem) / n if n else 0.5
-    pool_r = sum(rk) / n if n else pool_r_default
 
     def lvl(mid: str, sid: str) -> float:
         return float(skill_matrix.get(mid, {}).get(sid, 0.0))
@@ -158,31 +157,31 @@ def run_placement_phase1(
             for f_idx in females_out[:20]:
                 gender_costs.append((F[m_idx][j] - F[f_idx][j]) / team_fit)
 
+    # LAM_RANK: 직위 카테고리 불균형 팀에서 교환 비용 중앙값
     rank_costs: list[float] = []
     for j in range(len(P)):
         mj = team_1st[j]
         team_fit = sum(F[i][j] for i in mj)
-        if team_fit == 0:
+        if team_fit == 0 or not role_types:
             continue
-        avg_rk_j = sum(rk[i] for i in mj) / len(mj)
-        if abs(avg_rk_j - pool_r) < 0.3:
-            continue
-        if avg_rk_j > pool_r:
-            for h in [i for i in mj if rk[i] > pool_r]:
-                for lo in [i for i in range(n) if rk[i] < pool_r and asg1[i] != j][:20]:
-                    rank_costs.append((F[h][j] - F[lo][j]) / team_fit)
-        else:
-            for lo in [i for i in mj if rk[i] < pool_r]:
-                for h in [i for i in range(n) if rk[i] > pool_r and asg1[i] != j][:20]:
-                    rank_costs.append((F[lo][j] - F[h][j]) / team_fit)
+        for ri, r in enumerate(role_types):
+            expected = global_ratio[ri] * len(mj)
+            actual   = sum(one_hot[i][ri] for i in mj)
+            if actual >= expected:
+                continue
+            # 이 직위가 부족한 팀: 다른 직위 가진 사람↔이 직위 가진 외부인 교환 비용
+            wrong_in  = [i for i in mj if one_hot[i][ri] == 0]
+            right_out = [i for i in range(n) if one_hot[i][ri] == 1 and asg1[i] != j]
+            for wi in wrong_in:
+                for ro in right_out[:20]:
+                    rank_costs.append((F[wi][j] - F[ro][j]) / team_fit)
 
     fit_mean_team = fit1_total / len(P) if len(P) > 0 else 1.0
     avg_team_size = n / len(P) if len(P) > 0 else 1.0
-    rk_std        = float(np.std(rk)) if len(rk) > 1 else 1.0
     gender_rate   = statistics.median(gender_costs) if gender_costs else 0.05
     rank_rate     = statistics.median(rank_costs)   if rank_costs  else 0.05
     LAM_GENDER = (fit_mean_team * gender_rate / (avg_team_size * pool_f)) if pool_f > 0 else 0.0
-    LAM_RANK   = (fit_mean_team * rank_rate   / rk_std)                   if rk_std  > 0 else 0.0
+    LAM_RANK   = max(fit_mean_team * rank_rate * RANK_LAM_MULT, fit_mean_team * RANK_LAM_MULT * 0.1)
 
     # 팀별 평균 레벨 (1차 ILP 기준)
     team_avg_levels: dict[str, float] = {}
@@ -294,15 +293,12 @@ def run_placement(
         row = fit_matrix.get(mid, {})
         F.append([float(row.get(pid, 0.0)) for pid in P])
 
-    # ── 성별 / 직급 벡터 ────────────────────────────────────────────────────
+    # ── 성별 / 직위 벡터 ────────────────────────────────────────────────────
     id_to_m = {m["id"]: m for m in members}
     fem    = [_to_female(id_to_m[mid].get("gender", "")) for mid in people]
-    rk_raw = [_to_rank(id_to_m[mid].get("role", "")) for mid in people]
-    known  = [v for v in rk_raw if v > 0]
-    pool_r_default = sum(known) / len(known) if known else 3.0
-    rk     = [v if v > 0 else pool_r_default for v in rk_raw]
+    roles  = [str(id_to_m[mid].get("role") or "").strip() for mid in people]
+    role_types, one_hot, global_ratio = _role_vectors(roles)
     pool_f = sum(fem) / n if n else 0.5
-    pool_r = sum(rk) / n if n else pool_r_default
 
     def lvl(mid: str, sid: str) -> float:
         return float(skill_matrix.get(mid, {}).get(sid, 0.0))
@@ -382,38 +378,32 @@ def run_placement(
             for f_idx in females_out[:20]:
                 gender_costs.append((F[m_idx][j] - F[f_idx][j]) / team_fit)
 
-    # LAM_RANK: 1차 배치 직급 불균형 팀 기준 교환 비용 중앙값
+    # LAM_RANK: 직위 카테고리 불균형 팀 교환 비용 중앙값
     rank_costs: list[float] = []
     for j in range(len(P)):
         mj = team_1st[j]
         team_fit = sum(F[i][j] for i in mj)
-        if team_fit == 0:
+        if team_fit == 0 or not role_types:
             continue
-        avg_rk_j = sum(rk[i] for i in mj) / len(mj)
-        if abs(avg_rk_j - pool_r) < 0.3:
-            continue
-        if avg_rk_j > pool_r:
-            high_in  = [i for i in mj if rk[i] > pool_r]
-            low_out  = [i for i in range(n) if rk[i] < pool_r and asg1[i] != j]
-            for h in high_in:
-                for lo in low_out[:20]:
-                    rank_costs.append((F[h][j] - F[lo][j]) / team_fit)
-        else:
-            low_in   = [i for i in mj if rk[i] < pool_r]
-            high_out = [i for i in range(n) if rk[i] > pool_r and asg1[i] != j]
-            for lo in low_in:
-                for h in high_out[:20]:
-                    rank_costs.append((F[lo][j] - F[h][j]) / team_fit)
+        for ri in range(len(role_types)):
+            expected = global_ratio[ri] * len(mj)
+            actual   = sum(one_hot[i][ri] for i in mj)
+            if actual >= expected:
+                continue
+            wrong_in  = [i for i in mj if one_hot[i][ri] == 0]
+            right_out = [i for i in range(n) if one_hot[i][ri] == 1 and asg1[i] != j]
+            for wi in wrong_in:
+                for ro in right_out[:20]:
+                    rank_costs.append((F[wi][j] - F[ro][j]) / team_fit)
 
     fit_mean_team = fit1_total / len(P) if len(P) > 0 else 1.0
     avg_team_size = n / len(P) if len(P) > 0 else 1.0
-    rk_std        = float(np.std(rk)) if len(rk) > 1 else 1.0
 
     gender_rate = statistics.median(gender_costs) if gender_costs else 0.05
     rank_rate   = statistics.median(rank_costs)   if rank_costs  else 0.05
 
     LAM_GENDER = (fit_mean_team * gender_rate / (avg_team_size * pool_f)) if pool_f > 0 else 0.0
-    LAM_RANK   = (fit_mean_team * rank_rate   / rk_std)                   if rk_std  > 0 else 0.0
+    LAM_RANK   = max(fit_mean_team * rank_rate * RANK_LAM_MULT, fit_mean_team * RANK_LAM_MULT * 0.1)
 
     # ── 팀별 평균 레벨 분포 (슬라이더 기본값 및 범위 계산용) ───────────────────
     team_avg_levels: dict[str, float] = {}
@@ -504,16 +494,18 @@ def run_placement(
             )
             obj2 -= LAM_GENDER * (dp + dm)
 
-    # 소프트 ③ 직급 균형
-    if enable_rank:
+    # 소프트 ③ 직위 다양성 균형 (카테고리별 비율 균등화)
+    if enable_rank and role_types:
         for j in range(len(P)):
-            dp = pulp.LpVariable(f"rdp_{j}", lowBound=0)
-            dm = pulp.LpVariable(f"rdm_{j}", lowBound=0)
-            prob2 += (
-                pulp.lpSum(rk[i] * x2[(i, j)] for i in range(n)) - pool_r * Nj[j]
-                == dp - dm
-            )
-            obj2 -= LAM_RANK * (dp + dm)
+            for ri in range(len(role_types)):
+                dp = pulp.LpVariable(f"rdp_{j}_{ri}", lowBound=0)
+                dm = pulp.LpVariable(f"rdm_{j}_{ri}", lowBound=0)
+                prob2 += (
+                    pulp.lpSum(one_hot[i][ri] * x2[(i, j)] for i in range(n))
+                    - global_ratio[ri] * Nj[j]
+                    == dp - dm
+                )
+                obj2 -= LAM_RANK * (dp + dm)
 
     prob2 += obj2
     build_t = time.time() - t0

@@ -7,7 +7,7 @@ export const mockTFResult = {
   warnings: [],
 }
 
-export function buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills }) {
+export function buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills, tfSize, minSkillLevel = 2.8 }) {
   // TF 구성: tfRequiredSkills 보유자를 추출 가능한 인원 중에서 선발
   const tfMemberIds = []
   const skillCoverage = {}
@@ -31,15 +31,17 @@ export function buildMockTFResult({ members, skills, skillMatrix, currentAssignm
   }
 
   const extractedSet = new Set()
+  const targetSize = tfSize ?? tfRequiredSkills.length ?? 1
 
+  // 스킬 보유자 우선 선발
   for (const sid of tfRequiredSkills) {
+    if (extractedSet.size >= targetSize) break
     const { holders } = skillCoverage[sid]
     for (const mid of holders) {
       if (extractedSet.has(mid)) continue
       const teamId = currentAssignment[mid]
       if (!teamId) { extractedSet.add(mid); tfMemberIds.push(mid); break }
 
-      // 차출 시 팀에 남는 보유자 확인
       const teamMembers = teamMemberMap[teamId] || []
       const remaining = teamMembers.filter((id) => id !== mid && !extractedSet.has(id))
       const stillCovered = remaining.some((id) => (skillMatrix[id]?.[sid] ?? 0) > 0)
@@ -47,7 +49,6 @@ export function buildMockTFResult({ members, skills, skillMatrix, currentAssignm
       if (stillCovered) {
         extractedSet.add(mid)
         tfMemberIds.push(mid)
-        // 팀 영향도 기록
         if (!teamImpact[teamId]) {
           const team = currentTeams.find((t) => t.id === teamId)
           const before = {}
@@ -66,6 +67,28 @@ export function buildMockTFResult({ members, skills, skillMatrix, currentAssignm
     }
   }
 
+  // 목표 인원 미달 시 나머지 차출 가능 인원에서 추가 선발
+  if (extractedSet.size < targetSize) {
+    for (const m of members) {
+      if (extractedSet.size >= targetSize) break
+      if (extractedSet.has(m.id)) continue
+      const teamId = currentAssignment[m.id]
+      if (!teamId) { extractedSet.add(m.id); tfMemberIds.push(m.id); continue }
+
+      const teamMembers = teamMemberMap[teamId] || []
+      const remaining = teamMembers.filter((id) => id !== m.id && !extractedSet.has(id))
+      // 팀에 최소 1명 남아야 차출 가능
+      if (remaining.length === 0) continue
+
+      extractedSet.add(m.id)
+      tfMemberIds.push(m.id)
+      if (!teamImpact[teamId]) {
+        teamImpact[teamId] = { extracted: [], before: {}, after: {}, safe: true }
+      }
+      teamImpact[teamId].extracted.push(m.id)
+    }
+  }
+
   // 경고: 미충족 스킬
   const warnings = []
   for (const [sid, info] of Object.entries(skillCoverage)) {
@@ -79,7 +102,7 @@ export function buildMockTFResult({ members, skills, skillMatrix, currentAssignm
   for (const [teamId, impact] of Object.entries(teamImpact)) {
     const team = currentTeams.find((t) => t.id === teamId)
     for (const sid of team?.requiredSkills ?? []) {
-      if ((impact.after[sid] ?? 0) < 2.8) {
+      if ((impact.after[sid] ?? 0) < minSkillLevel) {
         impact.safe = false
         warnings.push({
           type: 'team_risk',

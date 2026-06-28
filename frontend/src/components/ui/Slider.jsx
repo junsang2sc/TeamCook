@@ -22,7 +22,7 @@ export default function Slider({ min, max, step = 1, value, onChange, label, rec
             {recommendedValue !== undefined && (
               <span className="text-xs text-body">추천: {recommendedValue}</span>
             )}
-            <span className="text-sm font-mono font-medium text-ink">{snap(raw)}</span>
+            <span className="text-sm font-mono font-medium text-ink">{step < 1 ? snap(raw).toFixed(1) : snap(raw)}</span>
           </div>
         </div>
       )}
