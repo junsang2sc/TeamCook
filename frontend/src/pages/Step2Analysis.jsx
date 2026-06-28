@@ -703,19 +703,42 @@ function TalentPie({ talentTypes }) {
     name: type, value, color: C.talentColors[type] || C.body,
   }))
 
+  const total = entries.length
+
   return (
     <div className="border border-hairline rounded-xl bg-surface p-5 flex-1 flex flex-col">
-      <p className="text-sm text-body font-mono uppercase tracking-wider mb-4">유형별 인원 분포</p>
-      <div className="flex-1 min-h-0">
+      <p className="text-sm text-body font-mono uppercase tracking-wider mb-3">유형별 인원 분포</p>
+
+      {/* 도넛 차트 + 중앙 총원 */}
+      <div className="relative flex-1 flex items-center justify-center">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={pieData} cx="50%" cy="45%" innerRadius="30%" outerRadius="52%" dataKey="value">
+            <Pie data={pieData} cx="50%" cy="50%" innerRadius="42%" outerRadius="72%"
+              dataKey="value" paddingAngle={2} startAngle={90} endAngle={-270}>
               {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
             </Pie>
-            <Tooltip formatter={(v, n) => [`${v}명`, n]} />
-            <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 13, color: '#6B7B8F' }} />
+            <Tooltip formatter={(v, n) => [`${v}명 (${total ? Math.round(v/total*100) : 0}%)`, n]} />
           </PieChart>
         </ResponsiveContainer>
+        {/* 중앙 총원 */}
+        <div className="absolute flex flex-col items-center pointer-events-none">
+          <span className="text-2xl font-mono font-bold text-ink">{total}</span>
+          <span className="text-xs text-body">명</span>
+        </div>
+      </div>
+
+      {/* 커스텀 범례 — 하단 고정 */}
+      <div className="flex flex-col gap-1.5 pt-3 border-t border-hairline mt-3">
+        {pieData.map(d => (
+          <div key={d.name} className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+            <span className="text-sm flex-1" style={{ color: '#6B7B8F' }}>{d.name}</span>
+            <span className="text-sm font-mono font-medium text-ink">{d.value}명</span>
+            <span className="text-xs font-mono w-9 text-right" style={{ color: '#6B7B8F' }}>
+              {total ? Math.round(d.value / total * 100) : 0}%
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )
