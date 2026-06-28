@@ -22,7 +22,7 @@ export const deleteFromArchive = (id) => {
 }
 
 export const TYPE_META = {
-  new: { icon: '🍳', label: '신규배치' },
-  re:  { icon: '🔄', label: '재배치'   },
-  tf:  { icon: '⚡', label: 'TF 구성'  },
+  new: { icon: '/icon/folder icon.png', label: '신규배치' },
+  re:  { icon: '/icon/glass icon.png',  label: '재배치'   },
+  tf:  { icon: '/icon/check icon.png',  label: 'TF 구성'  },
 }

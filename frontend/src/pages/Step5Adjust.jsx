@@ -16,6 +16,7 @@ export default function Step5Adjust() {
     skillMatrix,
     skills,
     teams,
+    placementType,
   } = useStore()
 
   const base = placementResult || mockPlacementResult
@@ -196,7 +197,7 @@ export default function Step5Adjust() {
             {/* 상단 고정 액션 바 */}
             <div className="flex items-center justify-between bg-surface border-b border-hairline px-4 py-2.5 shrink-0">
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => navigate('/step/4')}>
+                <Button variant="outline" size="sm" onClick={() => navigate(placementType === 'tf' ? '/step/4/tf' : '/step/4')}>
                   ← 결과로 돌아가기
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleReset}>

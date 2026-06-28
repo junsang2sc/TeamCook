@@ -632,14 +632,14 @@ export default function Landing() {
               스킬 데이터를 활용해 최적 팀 배치 결과를 확인할 수 있어요.
             </motion.p>
             <motion.div className="flex flex-col sm:flex-row gap-3 justify-center" {...fadeUp(0.2)}>
-              <button onClick={() => handleStart('new')} className="px-6 py-3 font-mono text-sm rounded-sm transition-opacity hover:opacity-90" style={{ backgroundColor: C.primary, color: '#fff' }}>
-                🍳 신규배치 시작하기
+              <button onClick={() => handleStart('new')} className="flex items-center gap-2 px-6 py-3 font-mono text-sm rounded-sm transition-opacity hover:opacity-90" style={{ backgroundColor: '#fff', border: '1.5px solid #2ECC87', color: '#1a6b45' }}>
+                <img src="/icon/folder icon.png" alt="" className="w-4 h-4 object-contain" /> 신규배치 시작하기
               </button>
-              <button onClick={() => handleStart('re')} className="px-6 py-3 font-mono text-sm rounded-sm border transition-colors hover:opacity-80" style={{ borderColor: C.hairline, backgroundColor: C.surface, color: C.ink }}>
-                🔄 재배치 시작하기
+              <button onClick={() => handleStart('re')} className="flex items-center gap-2 px-6 py-3 font-mono text-sm rounded-sm transition-opacity hover:opacity-90" style={{ backgroundColor: '#fff', border: '1.5px solid #2ECC87', color: '#1a6b45' }}>
+                <img src="/icon/glass icon.png" alt="" className="w-4 h-4 object-contain" /> 재배치 시작하기
               </button>
-              <button onClick={() => handleStart('tf')} className="px-6 py-3 font-mono text-sm rounded-sm border transition-colors hover:opacity-80" style={{ borderColor: C.hairline, backgroundColor: C.surface, color: C.ink }}>
-                ⚡ TF 구성하기
+              <button onClick={() => handleStart('tf')} className="flex items-center gap-2 px-6 py-3 font-mono text-sm rounded-sm transition-opacity hover:opacity-90" style={{ backgroundColor: '#fff', border: '1.5px solid #2ECC87', color: '#1a6b45' }}>
+                <img src="/icon/check icon.png" alt="" className="w-4 h-4 object-contain" /> TF 구성하기
               </button>
             </motion.div>
           </div>

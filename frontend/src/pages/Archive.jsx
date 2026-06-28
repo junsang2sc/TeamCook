@@ -34,9 +34,9 @@ function Pct({ value }) {
 }
 
 const START_OPTIONS = [
-  { type: 'new', icon: '🍳', label: '신규배치' },
-  { type: 're',  icon: '🔄', label: '재배치'   },
-  { type: 'tf',  icon: '⚡', label: 'TF 구성'  },
+  { type: 'new', icon: '/icon/folder icon.png', label: '신규배치' },
+  { type: 're',  icon: '/icon/glass icon.png',  label: '재배치'   },
+  { type: 'tf',  icon: '/icon/check icon.png',  label: 'TF 구성'  },
 ]
 
 /* ─── 시작 드롭다운 버튼 ────────────────────────────── */
@@ -74,7 +74,7 @@ function StartDropdown({ label, dark = false, onSelect }) {
                 style={{ color: C.ink, borderColor: C.hairline }}
                 onClick={() => { setOpen(false); onSelect(o.type) }}
               >
-                <span>{o.icon}</span>
+                <img src={o.icon} alt="" className="w-5 h-5 object-contain" />
                 <span className="font-mono">{o.label}</span>
               </button>
             ))}
@@ -115,7 +115,7 @@ function ArchiveCard({ item, onView, onReplace, onDelete, index }) {
       {/* 헤더 */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-xl">{meta.icon}</span>
+          <img src={meta.icon} alt="" className="w-6 h-6 object-contain" />
           <div>
             <div className="text-sm font-bold" style={{ color: C.ink }}>{meta.label}</div>
             <div className="text-xs font-mono" style={{ color: C.body }}>{formatDate(item.createdAt)}</div>
