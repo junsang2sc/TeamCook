@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Any
 
-from services.tf import run_tf
+from services.tf import run_tf, run_tf_phase1
 
 router = APIRouter(prefix="/api/tf", tags=["tf"])
 
@@ -42,6 +42,25 @@ class TFRequest(BaseModel):
     # fit_vector: {member_id: fit_score}  ← TF에 대한 개인별 적합도
     fit_vector: dict[str, float] = Field(default={}, alias="fitVector")
     conditions: dict[str, Any] = {}
+
+
+@router.post("/phase1")
+def tf_phase1(req: TFRequest):
+    """1차 ILP → avgLevelRange, lambdaValues 반환 (Step3 슬라이더 범위용)"""
+    if not req.members:
+        raise HTTPException(status_code=400, detail="members가 비어 있습니다.")
+    members = [m.model_dump(by_alias=False) for m in req.members]
+    teams   = [t.model_dump(by_alias=False) for t in req.teams]
+    tf_info = req.tf_info.model_dump(by_alias=False)
+    try:
+        result = run_tf_phase1(
+            members=members, teams=teams, tf_info=tf_info,
+            skill_matrix=req.skill_matrix, fit_vector=req.fit_vector,
+            conditions=req.conditions,
+        )
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return result
 
 
 @router.post("")

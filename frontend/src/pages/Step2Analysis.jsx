@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -8,7 +8,7 @@ import Navbar from '../components/layout/Navbar'
 import Button from '../components/ui/Button'
 import WhiskLoader from '../components/ui/WhiskLoader'
 import useStore from '../store/useStore'
-import { analyzeEda, analyzeFit } from '../api/index'
+import { analyzeEda, analyzeFit, getPlacementPhase1, getReplacementPhase1, getTFPhase1 } from '../api/index'
 
 // ── 색상 (DESIGN.md) ─────────────────────────────────────────────────────────
 const C = {
@@ -52,19 +52,91 @@ export default function Step2Analysis() {
     edaResult, selectedIdf, selectedKss, selectedDiff,
     step2CurrentStep,
     setEdaResult, setSelectedIdf, setSelectedKss, setSelectedDiff,
-    setFitMatrix, setStep2CurrentStep, setCurrentStep,
-    placementType, currentTeams, tfId, tfName, tfRequiredSkills,
+    setFitMatrix, setStep2CurrentStep, setCurrentStep, setPhase1Info,
+    placementType, currentTeams, tfId, tfName, tfRequiredSkills, tfSize, setTfSize,
+    candidateTeams, maxAddPerTeam, setCandidateTeams, setMaxAddPerTeam,
+    currentAssignment,
   } = useStore()
 
+  // currentAssignment 포맷:
+  //   재배치: { memberId: { currentTeamId, isTarget, isSurplus } }
+  //   TF:     { memberId: teamId (string) }
+  const getMemberTeamId = (mid) => {
+    const v = currentAssignment[mid]
+    if (!v) return null
+    if (typeof v === 'string') return v   // TF 포맷
+    return v?.currentTeamId ?? null       // 재배치 포맷
+  }
+
+  // ── TF / 재배치 팀선택 단계 관리 ────────────────────────────────────────────
+  const isTF          = placementType === 'tf'
+  const isReplacement = placementType === 're'
+  // 재배치: teams에 기존팀 / TF: currentTeams에 기존팀
+  const reBaseTeams = isReplacement
+    ? (currentTeams.length > 0 ? currentTeams : teams)
+    : []
+  const tfBaseTeams = isTF ? currentTeams : []
+  const baseTeams   = isTF ? tfBaseTeams : reBaseTeams
+
+  const [replacementPhase, setReplacementPhase] = useState(
+    () => ((isReplacement || isTF) && candidateTeams.length === 0) ? 'team-select' : 'eda'
+  )
+  // 팀선택 로컬 상태 (store에 저장 전)
+  const allTeamIds = baseTeams.map(t => t.id)
+  const [localCandidates, setLocalCandidates] = useState(
+    () => new Set(candidateTeams.length > 0 ? candidateTeams : allTeamIds)
+  )
+  const [localMaxAdd, setLocalMaxAdd] = useState(
+    () => Object.fromEntries(
+      baseTeams.map(t => [t.id, maxAddPerTeam[t.id] ?? (isTF ? 3 : 5)])
+    )
+  )
+  const [localTfSize, setLocalTfSize] = useState(tfSize ?? 10)
+
+  // 기존 팀 현황 계산 (팀선택 단계 표시용, AVG_LEVEL=2.8 기준)
+  const AVG_LEVEL_DEFAULT = 2.8
+  const ROLE_MAP_KR = { '부장': 5, '차장': 4, '과장': 3, '대리': 2, '사원': 1, '팀장급': 5, '중간급': 3, '주니어': 1 }
+  const teamStatus = useMemo(() => baseTeams.map(team => {
+    const tm = members.filter(m => getMemberTeamId(m.id) === team.id)
+    const n = tm.length
+    if (n === 0) return { id: team.id, name: team.name, n, femaleRatio: 0, avgRank: 0, gapCount: 0, totalGap: 0, skillCount: 0 }
+    const nF = tm.filter(m => ['여','f','female'].includes((m.gender||'').toLowerCase())).length
+    const avgRank = tm.map(m => ROLE_MAP_KR[m.role] || 3).reduce((a,b)=>a+b,0) / n
+    const reqSkills = team.requiredSkills || team.required_skills || []
+    let gapCount = 0, totalGap = 0
+    reqSkills.forEach(sid => {
+      const lv = tm.reduce((acc, m) => acc + (skillMatrix[m.id]?.[sid] ?? 0), 0)
+      const gap = Math.max(0, AVG_LEVEL_DEFAULT * n - lv)
+      if (gap > 0) { gapCount++; totalGap += gap }
+    })
+      // TF 전용: TF 필수 스킬 보유자 수
+    const tfHolders = isTF
+      ? (tfRequiredSkills || []).reduce((sum, sid) =>
+          sum + tm.filter(m => (skillMatrix[m.id]?.[sid] ?? 0) > 0).length, 0)
+      : null
+    return { id: team.id, name: team.name, n, femaleRatio: nF/n, avgRank, gapCount, totalGap: Math.round(totalGap*10)/10, skillCount: reqSkills.length, tfHolders }
+  }), [baseTeams, members, skillMatrix, isTF, tfRequiredSkills])
+
+  function confirmTeamSelect() {
+    const selected = [...localCandidates]
+    setCandidateTeams(selected)
+    setMaxAddPerTeam(localMaxAdd)
+    if (isTF) setTfSize(localTfSize)
+    setReplacementPhase('eda')
+  }
+
   // TF: currentTeams(기존팀) + TF 팀 자체를 projects로 사용
-  // 재배치: currentTeams 또는 teams
+  // 재배치: 사용자가 선택한 candidateTeams만 (미선택 시 전체)
+  // 신규: teams
+  const effectiveCandidateIds = candidateTeams.length > 0 ? candidateTeams : allTeamIds
+  // TF: 단일 TF 과제만 project로 사용 (차출 후보 × P21)
+  // 재배치: 선택된 후보 팀만
   // 신규: teams
   const analysisTeams = placementType === 'tf'
-    ? [
-        ...currentTeams,
-        { id: tfId || 'tf', name: tfName || 'TF', requiredSkills: tfRequiredSkills || [] },
-      ]
-    : (placementType === 're' && currentTeams.length > 0 ? currentTeams : teams)
+    ? [{ id: tfId || 'tf', name: tfName || 'TF', requiredSkills: tfRequiredSkills || [] }]
+    : placementType === 're'
+      ? reBaseTeams.filter(t => effectiveCandidateIds.includes(t.id))
+      : teams
 
   const [loading, setLoading] = useState(!edaResult)
   const [loadStep, setLoadStep] = useState(0)
@@ -78,6 +150,7 @@ export default function Step2Analysis() {
   // ── EDA 호출 ──────────────────────────────────────────────────────────────
   const didFetch = useRef(false)
   useEffect(() => {
+    if (replacementPhase === 'team-select') return   // 팀선택 완료 후 EDA 시작
     if (edaResult || didFetch.current) return
     didFetch.current = true
 
@@ -89,10 +162,17 @@ export default function Step2Analysis() {
     }, 400)
 
     analyzeEda({
-      members: members.map(m => ({ id: m.id, name: m.name, role: m.role })),
+      members: members.map(m => ({ id: m.id, name: m.name, role: m.role,
+        current_team_id: getMemberTeamId(m.id) })),
       skill_matrix: skillMatrix,
       skills: skills.map(s => ({ id: s.id, name: s.name })),
       projects: analysisTeams.map(t => ({ id: t.id, name: t.name, required_skills: t.requiredSkills || t.required_skills || [] })),
+      placement_type: placementType === 're' ? 're' : placementType === 'tf' ? 'tf' : 'new',
+      ...(placementType === 'tf' ? {
+        tf_required_skills: tfRequiredSkills || [],
+        tf_size: tfSize ?? localTfSize ?? 10,
+        candidate_team_ids: effectiveCandidateIds,
+      } : {}),
     })
       .then(res => {
         clearInterval(iv)
@@ -107,7 +187,7 @@ export default function Step2Analysis() {
       })
 
     return () => clearInterval(iv)
-  }, [])
+  }, [replacementPhase])
 
   // ── 적합도 계산 ───────────────────────────────────────────────────────────
   async function handleCalcFit() {
@@ -115,21 +195,233 @@ export default function Step2Analysis() {
     setFitError(null)
     try {
       const res = await analyzeFit({
-        members: members.map(m => ({ id: m.id, name: m.name, role: m.role })),
+        members: members.map(m => ({ id: m.id, name: m.name, role: m.role,
+          current_team_id: getMemberTeamId(m.id) })),
         skill_matrix: skillMatrix,
         skills: skills.map(s => ({ id: s.id, name: s.name })),
         projects: analysisTeams.map(t => ({ id: t.id, name: t.name, required_skills: t.requiredSkills || t.required_skills || [] })),
+        placement_type: placementType === 're' ? 're' : placementType === 'tf' ? 'tf' : 'new',
+        ...(placementType === 'tf' ? {
+          candidate_team_ids: effectiveCandidateIds,
+          tf_required_skills: tfRequiredSkills || [],
+          tf_size: tfSize ?? localTfSize ?? 10,
+        } : {}),
         selected_idf: selectedIdf,
         selected_kss: selectedKss,
         selected_diff: selectedDiff,
       })
       setFitMatrix(res)
+
+      // 1차 ILP 실행 → avgLevelRange (슬라이더 범위) 계산
+      try {
+        const fitMatrixForPhase1 = res?.matrix || {}
+        const basePayload = {
+          members: members.map(m => ({ id: m.id, name: m.name, role: m.role, gender: m.gender,
+            currentTeamId: getMemberTeamId(m.id) })),
+          teams: analysisTeams.map(t => ({
+            id: t.id, name: t.name,
+            requiredSkills: t.requiredSkills || t.required_skills || [],
+            size: Math.ceil(members.length / analysisTeams.length),
+          })),
+          skillMatrix: skillMatrix,
+          fitMatrix: fitMatrixForPhase1,
+        }
+        const phase1Fn = placementType === 're'
+          ? getReplacementPhase1
+          : placementType === 'tf'
+            ? getTFPhase1
+            : getPlacementPhase1
+        // TF phase1은 '차출 원천 팀들'(currentTeams 중 선택된 팀)이 필요함.
+        // analysisTeams(=TF 단일 과제)가 아니라 기존 팀을 보내야 잔류 평균 레벨이 계산됨.
+        const tfSourceTeams = (isTF ? currentTeams : [])
+          .filter(t => effectiveCandidateIds.includes(t.id))
+          .map(t => ({
+            id: t.id, name: t.name,
+            requiredSkills: t.requiredSkills || t.required_skills || [],
+            size: t.size || 1,
+          }))
+        const p1 = await phase1Fn(
+          placementType === 'tf'
+            ? {
+                ...basePayload,
+                teams: tfSourceTeams,
+                tfInfo: {
+                  id: tfId || 'tf', name: tfName || 'TF',
+                  requiredSkills: tfRequiredSkills || [],
+                  size: tfSize ?? localTfSize ?? 10,
+                },
+                fitVector: Object.fromEntries(
+                  Object.entries(fitMatrixForPhase1).map(([mid, scores]) =>
+                    [mid, typeof scores === 'object' ? (scores[tfId || 'tf'] ?? 0) : scores]
+                  )
+                ),
+              }
+            : basePayload
+        )
+        setPhase1Info(p1)
+      } catch (_) {
+        // phase1 실패 시 슬라이더 기본값(1~5) 유지, 배치는 계속 가능
+      }
+
       setCurrentStep(3)
       navigate('/step/3')
     } catch (err) {
       setFitError(err.message)
       setFitLoading(false)
     }
+  }
+
+  // ── 재배치: 팀 현황 EDA + 팀 선택 + MAX_ADD 입력 단계 (로딩보다 먼저 체크) ──
+  if ((isReplacement || isTF) && replacementPhase === 'team-select') {
+    const surplusMembers = isReplacement ? members.filter(m => !getMemberTeamId(m.id)) : []
+    const nF = surplusMembers.filter(m => ['여','f','female'].includes((m.gender||'').toLowerCase())).length
+    const poolF = surplusMembers.length > 0 ? nF / surplusMembers.length : 0
+    const candidateMembers = isTF
+      ? members.filter(m => localCandidates.has(getMemberTeamId(m.id) || ''))
+      : []
+    return (
+      <div className="min-h-screen bg-canvas">
+        <Navbar currentStep={2} />
+        <div className="pt-[69px] max-w-5xl mx-auto px-6 pb-20">
+          <div className="pt-8 pb-5">
+            <h2 className="text-xl font-semibold text-ink">
+              {isTF ? 'TF 구성 — 차출 허용 팀 설정' : '기존 팀 현황 분석'}
+            </h2>
+            <p className="text-sm text-body mt-1">
+              {isTF
+                ? `TF 차출을 허용할 팀을 선택하고 팀당 최대 차출 인원을 설정하세요.`
+                : '재배치 인원을 받을 팀을 선택하고 팀당 최대 인원을 설정하세요.'}
+            </p>
+            {/* TF 목표 인원 입력 */}
+            {isTF && (
+              <div className="mt-4 flex items-center gap-3">
+                <span className="text-sm font-medium text-ink">TF 목표 인원:</span>
+                <input
+                  type="number" min={1} max={200}
+                  value={localTfSize}
+                  onChange={e => setLocalTfSize(Math.max(1, parseInt(e.target.value)||1))}
+                  className="w-20 text-center border border-hairline rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-primary"
+                />
+                <span className="text-xs text-body">명</span>
+                {tfName && <span className="text-xs text-body ml-2">TF: {tfName} ({(tfRequiredSkills||[]).length}개 필수스킬)</span>}
+              </div>
+            )}
+          </div>
+
+          {/* 팀별 현황 카드 */}
+          <div className="space-y-2 mb-8">
+            {teamStatus.map(ts => {
+              const selected = localCandidates.has(ts.id)
+              return (
+                <div key={ts.id}
+                  className={`border rounded-lg p-4 transition-colors cursor-pointer ${
+                    selected ? 'border-primary bg-primary/5' : 'border-hairline bg-surface opacity-60'
+                  }`}
+                  onClick={() => setLocalCandidates(prev => {
+                    const next = new Set(prev)
+                    next.has(ts.id) ? next.delete(ts.id) : next.add(ts.id)
+                    return next
+                  })}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                        selected ? 'border-primary bg-primary' : 'border-hairline'
+                      }`}>
+                        {selected && <span className="text-white text-xs">✓</span>}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-ink">{ts.id}</span>
+                        {ts.name && ts.name !== ts.id && (
+                          <span className="ml-2 text-xs text-body">{ts.name}</span>
+                        )}
+                        <span className="ml-2 text-xs text-body">· {ts.n}명</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6 text-sm">
+                      {isTF && (
+                        <div className="text-center">
+                          <div className={`font-mono font-semibold ${(ts.tfHolders||0) === 0 ? 'text-body' : 'text-primary'}`}>
+                            {ts.tfHolders ?? 0}명
+                          </div>
+                          <div className="text-xs text-body">TF스킬보유</div>
+                        </div>
+                      )}
+                      <div className="text-center">
+                        <div className={`font-mono font-semibold ${ts.gapCount > 0 ? 'text-accent-coral' : 'text-primary'}`}>
+                          {ts.gapCount}/{ts.skillCount}
+                        </div>
+                        <div className="text-xs text-body">미달스킬</div>
+                      </div>
+                      <div className="text-center">
+                        <div className={`font-mono font-semibold ${ts.totalGap > 0 ? 'text-accent-amber' : 'text-body'}`}>
+                          {ts.totalGap.toFixed(1)}
+                        </div>
+                        <div className="text-xs text-body">스킬부족도</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-mono font-semibold text-ink">{(ts.femaleRatio*100).toFixed(0)}%</div>
+                        <div className="text-xs text-body">여성비율</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-mono font-semibold text-ink">{ts.avgRank.toFixed(1)}</div>
+                        <div className="text-xs text-body">평균직급</div>
+                      </div>
+                      <div className="text-center" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="number" min={0} max={50}
+                          value={localMaxAdd[ts.id] ?? 5}
+                          onChange={e => setLocalMaxAdd(prev => ({ ...prev, [ts.id]: Math.max(0, parseInt(e.target.value)||0) }))}
+                          className="w-14 text-center border border-hairline rounded px-1 py-0.5 text-sm font-mono focus:outline-none focus:border-primary"
+                          disabled={!selected}
+                        />
+                        <div className="text-xs text-body">최대추가</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* 요약 */}
+          <div className="p-4 border border-hairline rounded-lg bg-surface mb-8">
+            {isTF ? (
+              <>
+                <p className="text-sm font-medium text-ink mb-2">
+                  TF 목표: {localTfSize}명 | 차출 후보 (선택된 팀 소속): {candidateMembers.length}명
+                </p>
+                <div className="flex gap-4 text-xs text-body">
+                  <span>선택된 팀: {localCandidates.size}개</span>
+                  <span>팀별 상한 합계: {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 3), 0)}명</span>
+                  {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 3), 0) < localTfSize && (
+                    <span className="text-accent-coral">⚠ 상한 합계가 TF 목표보다 적습니다</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-ink mb-2">
+                  재배치 대상 잉여 인력: {surplusMembers.length}명
+                </p>
+                <div className="flex gap-4 text-xs text-body">
+                  <span>선택된 팀: {localCandidates.size}개</span>
+                  <span>총 수용 가능: {[...localCandidates].reduce((a, id) => a + (localMaxAdd[id] ?? 5), 0)}명</span>
+                  <span className={poolF*100 < 20 ? 'text-accent-coral' : ''}>잉여 인력 여성비율: {(poolF*100).toFixed(0)}%</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex justify-between">
+            <Button variant="outline" onClick={() => navigate('/step/1')}>← 데이터 수정</Button>
+            <Button onClick={confirmTeamSelect} disabled={localCandidates.size === 0}>
+              {isTF ? '선택 완료 — TF 후보 적합도 분석 →' : '선택 완료 — 적합도 분석 시작 →'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // ── 로딩 ──────────────────────────────────────────────────────────────────

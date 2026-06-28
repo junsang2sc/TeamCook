@@ -133,7 +133,7 @@ def calc_idf(pre: dict[str, Any]) -> dict[str, dict]:
     }
 
 
-# ── 카드 2 : 수요-공급 불균형 & SPOF (KSS) ────────────────────────────────────
+# ── 카드 2 : 수요-공급 불균형 & SPOF (KSS) — 신규배치 ────────────────────────
 
 def calc_kss(pre: dict[str, Any]) -> dict[str, dict]:
     """
@@ -160,6 +160,136 @@ def calc_kss(pre: dict[str, Any]) -> dict[str, dict]:
             "holders": holders[sid],
             "is_bottleneck": holders[sid] < demand[sid],
             "is_spof": holders[sid] <= threshold_5pct and demand[sid] >= 1,
+        }
+        for sid in all_skill_ids
+    }
+
+
+# ── 카드 2 : 수요-공급 불균형 (KSS) — 재배치 전용 ────────────────────────────
+
+def calc_kss_replacement(
+    pre_all: dict[str, Any],
+    surplus_ids: list[str],
+    team_skill_sum: dict[tuple, float],    # {(team_id, skill_id): existing level sum}
+    team_sizes: dict[str, int],            # {team_id: existing member count}
+    project_req: dict[str, list[str]],     # {project_id: [skill_id]}
+    avg_level: float = 2.8,
+) -> dict[str, dict]:
+    """
+    재배치 KSS (문제2_최종.ipynb 기반).
+    분자: 기존 팀원만으로 avg_level 미달인 후보 과제 수 (demand_gap)
+    분모: 잉여 인력 중 보유자 수
+    외부 충원 필요: 잉여 보유자 0명 + 수요 있음 → KSS 최대(1.0)
+    """
+    all_skill_ids   = pre_all["all_skill_ids"]
+    all_project_ids = pre_all["all_project_ids"]   # 후보 과제 목록
+    wide            = pre_all["wide"]
+
+    # 잉여 인력 보유자 수 (KSS 분모)
+    surplus_id_set = set(surplus_ids)
+    holders_surplus = {
+        sid: sum(1 for mid in surplus_id_set if wide.get(mid, {}).get(sid, 0) > 0)
+        for sid in all_skill_ids
+    }
+
+    # 기존팀원 미달 과제 수 (KSS 분자)
+    demand_gap: dict[str, int] = {}
+    for sid in all_skill_ids:
+        cnt = 0
+        for pid in all_project_ids:
+            if sid not in project_req.get(pid, []):
+                continue
+            existing_sum = team_skill_sum.get((pid, sid), 0.0)
+            n_team       = team_sizes.get(pid, 0)
+            if max(0.0, avg_level * n_team - existing_sum) > 0:
+                cnt += 1
+        demand_gap[sid] = cnt
+
+    # 외부 충원 필요 스킬: 잉여 보유자 없는데 수요 있음
+    external_needed = {
+        sid for sid in all_skill_ids
+        if holders_surplus[sid] == 0 and demand_gap[sid] > 0
+    }
+
+    # KSS raw
+    kss_raw_vals: dict[str, float | None] = {}
+    for sid in all_skill_ids:
+        h, d = holders_surplus[sid], demand_gap[sid]
+        if sid in external_needed:
+            kss_raw_vals[sid] = None   # 정규화 후 1.0 대입
+        elif d == 0:
+            kss_raw_vals[sid] = 0.0
+        else:
+            kss_raw_vals[sid] = d / h
+
+    # 정규화 (None 제외)
+    finite = {sid: v for sid, v in kss_raw_vals.items() if v is not None}
+    finite_norm = _normalize_zero_min(finite) if finite else {}
+    kss_norm = {
+        sid: (1.0 if kss_raw_vals[sid] is None else round(finite_norm.get(sid, 0.0), 4))
+        for sid in all_skill_ids
+    }
+
+    threshold_5pct = pre_all["n_people"] * 0.05
+
+    return {
+        sid: {
+            "kss_norm":           kss_norm[sid],
+            "demand":             demand_gap[sid],
+            "holders":            holders_surplus[sid],
+            "is_bottleneck":      holders_surplus[sid] < demand_gap[sid] and sid not in external_needed,
+            "is_spof":            holders_surplus[sid] <= threshold_5pct and demand_gap[sid] >= 1,
+            "is_external_needed": sid in external_needed,
+        }
+        for sid in all_skill_ids
+    }
+
+
+# ── 카드 2 : TF 전용 — 차출 후보 공급 현황 (KSS 대체) ───────────────────────
+
+def calc_kss_tf(
+    pre_all: dict[str, Any],
+    candidate_ids: list[str],
+    tf_skills: list[str],
+    tf_size: int = 1,
+) -> dict[str, dict]:
+    """
+    문제3_최종.ipynb 카드 2: TF 필수 스킬별 차출 후보 보유 현황.
+    KSS 대신 '후보 보유자가 적을수록 희귀한 공급' (공급 희귀도).
+    non-TF 스킬은 kss_norm=0으로 반환(calc_fit_matrix 호환).
+    """
+    all_skill_ids = pre_all["all_skill_ids"]
+    wide          = pre_all["wide"]
+    cand_set      = set(candidate_ids)
+    tf_skill_set  = set(tf_skills)
+
+    # 후보 보유자 수 (전체 스킬)
+    cand_holders: dict[str, int] = {
+        sid: sum(1 for mid in cand_set if wide.get(mid, {}).get(sid, 0) > 0)
+        for sid in all_skill_ids
+    }
+
+    # TF 스킬만 공급 희귀도 계산
+    tf_supply = {s: cand_holders.get(s, 0) for s in tf_skills}
+    max_sup = max(tf_supply.values()) if tf_supply else 0
+    min_sup = min(tf_supply.values()) if tf_supply else 0
+
+    supply_rarity: dict[str, float] = {}
+    for s in tf_skills:
+        h = tf_supply[s]
+        if max_sup > min_sup:
+            supply_rarity[s] = round((max_sup - h) / (max_sup - min_sup + 1e-9), 4)
+        else:
+            supply_rarity[s] = 0.0
+
+    return {
+        sid: {
+            "kss_norm":           supply_rarity.get(sid, 0.0),
+            "demand":             1 if sid in tf_skill_set else 0,
+            "holders":            cand_holders.get(sid, 0),
+            "is_bottleneck":      cand_holders.get(sid, 0) < tf_size and sid in tf_skill_set,
+            "is_spof":            cand_holders.get(sid, 0) == 0 and sid in tf_skill_set,
+            "is_external_needed": cand_holders.get(sid, 0) == 0 and sid in tf_skill_set,
         }
         for sid in all_skill_ids
     }

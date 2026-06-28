@@ -32,6 +32,7 @@ const useStore = create(
       tfName: null,
       tfProject: null,
       tfRequiredSkills: [],
+      tfSize: null,           // TF 목표 인원 수 (사용자 입력)
       currentTeams: [],
       tfResult: null,
 
@@ -44,7 +45,12 @@ const useStore = create(
       selectedDiff: [],      // 카드3 사용자 선택 스킬 ID 리스트
       fitMatrix: null,       // { matrix, stats, top5PerProject, ... }
       fitStats: null,        // { project_id: {max, min, mean, std} }
+      phase1Info: null,      // { avgLevelRange:{min,max,mean}, lambdaValues, teamAvgLevels, infeasibleSkills }
       step2CurrentStep: 1,   // 1~4 스텝 인디케이터
+
+      // Step 2 재배치 전용
+      candidateTeams: [],    // 재배치 받을 팀 ID 목록 (사용자 선택)
+      maxAddPerTeam: {},     // { team_id: int } 과제별 최대 재배치 인원
 
       // Step 3
       conditions: {
@@ -87,6 +93,10 @@ const useStore = create(
       setSelectedKss: (list) => set({ selectedKss: list }),
       setSelectedDiff: (list) => set({ selectedDiff: list }),
       setFitMatrix: (matrix) => set({ fitMatrix: matrix, fitStats: matrix?.stats ?? null }),
+      setPhase1Info: (info) => set({ phase1Info: info }),
+      setCandidateTeams: (teams) => set({ candidateTeams: teams }),
+      setMaxAddPerTeam: (map) => set({ maxAddPerTeam: map }),
+      setTfSize: (size) => set({ tfSize: size }),
       setStep2CurrentStep: (step) => set({ step2CurrentStep: step }),
       setConditions: (conditions) => set({ conditions }),
       setPlacementResult: (result) => set({ placementResult: result }),
@@ -124,7 +134,8 @@ const useStore = create(
         history: [], currentStep: 0,
         replacementScenario: null, currentAssignment: {}, surplusMembers: [],
         tfId: null, tfName: null, tfProject: null, tfRequiredSkills: [], currentTeams: [], tfResult: null,
-        edaResult: null, selectedIdf: [], selectedKss: [], selectedDiff: [], fitMatrix: null, fitStats: null, step2CurrentStep: 1,
+        edaResult: null, selectedIdf: [], selectedKss: [], selectedDiff: [], fitMatrix: null, fitStats: null, phase1Info: null, step2CurrentStep: 1,
+        candidateTeams: [], maxAddPerTeam: {},
       }),
     }),
     {

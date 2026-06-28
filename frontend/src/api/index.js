@@ -23,6 +23,12 @@ export const analyzeEda = (payload) =>
 export const analyzeFit = (payload) =>
   request('/api/analyze/fit', { method: 'POST', body: JSON.stringify(payload) })
 
+export const getPlacementPhase1 = (payload) =>
+  request('/api/placement/phase1', { method: 'POST', body: JSON.stringify(payload) })
+
+export const getReplacementPhase1 = (payload) =>
+  request('/api/replacement/phase1', { method: 'POST', body: JSON.stringify(payload) })
+
 export const getPlacement = (payload) => {
   console.log('[getPlacement] conditions:', JSON.stringify(payload.conditions))
   return request('/api/placement', { method: 'POST', body: JSON.stringify(payload) })
@@ -32,6 +38,9 @@ export const getReplacement = (payload) => {
   console.log('[getReplacement] conditions:', JSON.stringify(payload.conditions))
   return request('/api/replacement', { method: 'POST', body: JSON.stringify(payload) })
 }
+
+export const getTFPhase1 = (payload) =>
+  request('/api/tf/phase1', { method: 'POST', body: JSON.stringify(payload) })
 
 export const getTFPlacement = (payload) => {
   console.log('[getTFPlacement] tf_info:', JSON.stringify(payload.tfInfo))

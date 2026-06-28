@@ -16,12 +16,17 @@ export default function Step3Conditions() {
     analysisResult, placementMode,
     setPlacementResult, setCurrentStep,
     flowType, currentAssignment,
-    fitMatrix,
+    fitMatrix, phase1Info,
     placementType,
     currentTeams,
-    tfId, tfName, tfProject, tfRequiredSkills,
+    candidateTeams, maxAddPerTeam,
+    tfId, tfName, tfProject, tfRequiredSkills, tfSize,
     setTFData,
   } = useStore()
+
+  // 재배치에서 멤버의 현재 팀 ID는 currentAssignment에 별도 저장됨
+  const getMemberTeamId = (mid) =>
+    currentAssignment[mid]?.currentTeamId ?? null
 
   const [matrixView, setMatrixView] = useState('heatmap')
   const [selectedTeam, setSelectedTeam] = useState('')
@@ -88,17 +93,28 @@ export default function Step3Conditions() {
     setNlInput('')
   }
 
-  // 코사인 유사도 기반 적합도 계산 (프론트 자체 계산)
-  // TF: currentTeams + TF팀 자체, 재배치: currentTeams 우선, 신규: teams
+  // 재배치: candidateTeams로 필터, TF: TF 단일과제, 신규: teams
+  const allBaseTeams = placementType === 're'
+    ? (currentTeams.length > 0 ? currentTeams : teams)
+    : []
   const analysisTeams = placementType === 'tf'
-    ? [...currentTeams, { id: tfId || 'tf', name: tfName || 'TF', requiredSkills: tfRequiredSkills || [] }]
-    : (placementType === 're' && currentTeams.length > 0 ? currentTeams : teams)
+    ? [{ id: tfId || 'tf', name: tfName || 'TF', requiredSkills: tfRequiredSkills || [] }]
+    : placementType === 're'
+      ? allBaseTeams.filter(t => candidateTeams.length === 0 || candidateTeams.includes(t.id))
+      : teams
+
+  // 재배치 시 잉여 인력만, TF 시 차출 후보만, 신규 시 전체
+  const matrixMembers = placementType === 're'
+    ? members.filter(m => !getMemberTeamId(m.id))
+    : placementType === 'tf'
+      ? members.filter(m => candidateTeams.length === 0 || candidateTeams.includes(getMemberTeamId(m.id)))
+      : members
 
   const computeFitnessMatrix = () => {
     const allSkillIds = skills.map(s => s.id)
     const targetTeams = analysisTeams.length > 0 ? analysisTeams : teams
     const scores = {}
-    for (const m of members) {
+    for (const m of matrixMembers) {
       scores[m.id] = {}
       const mv = allSkillIds.map(sid => skillMatrix[m.id]?.[sid] ?? 0)
       const mvNorm = Math.sqrt(mv.reduce((a, b) => a + b * b, 0)) || 1
@@ -111,7 +127,7 @@ export default function Step3Conditions() {
       }
     }
     return {
-      members: members.map(m => ({ id: m.id, name: m.name })),
+      members: matrixMembers.map(m => ({ id: m.id, name: m.name })),
       teams: targetTeams.map(t => ({ id: t.id, name: t.name })),
       scores,
     }
@@ -185,24 +201,31 @@ export default function Step3Conditions() {
     if (placementType === 're') {
       let result
       try {
-        // 기존 팀 = currentTeams (Step1에서 업로드한 현재 배치 팀)
-        // surplus = current_team_id 없는 members
-        const targetTeams = (currentTeams.length > 0 ? currentTeams : teams).map(t => ({
-          id: t.id,
-          name: t.name,
-          requiredSkills: t.requiredSkills || t.required_skills || [],
-          size: t.size || 1,
-        }))
+        // 사용자가 선택한 후보 팀만 사용 (Step2 팀선택 단계에서 결정)
+        const allTeams = currentTeams.length > 0 ? currentTeams : teams
+        const candidateIds = candidateTeams.length > 0 ? new Set(candidateTeams) : new Set(allTeams.map(t => t.id))
+        const targetTeams = allTeams
+          .filter(t => candidateIds.has(t.id))
+          .map(t => ({
+            id: t.id,
+            name: t.name,
+            requiredSkills: t.requiredSkills || t.required_skills || [],
+            size: t.size || 1,
+          }))
+        // 과제별 MAX_ADD: store 값 우선, 없으면 conditions 값
+        const resolvedMaxAdd = Object.keys(maxAddPerTeam).length > 0
+          ? maxAddPerTeam
+          : conditions.maxAddPerTeam ?? 999
         result = await getReplacement({
           members: members.map(m => ({
             id: m.id, name: m.name, role: m.role ?? '',
             gender: m.gender ?? '', experience: m.experience ?? null,
-            currentTeamId: m.currentTeamId ?? m.current_team_id ?? null,
+            currentTeamId: getMemberTeamId(m.id),
           })),
           teams: targetTeams,
           skillMatrix,
           fitMatrix: fitMatrix?.matrix ?? {},
-          conditions,
+          conditions: { ...conditions, maxAddPerTeam: resolvedMaxAdd },
         })
         if (!result?.placement) throw new Error('no placement')
       } catch (e) {
@@ -219,33 +242,41 @@ export default function Step3Conditions() {
     if (placementType === 'tf') {
       let tfResult
       try {
+        const tfTeamId = tfId || 'tf'
         // TF fit_vector: fitMatrix에서 TF 팀 ID 컬럼 추출
-        const tfTeamId = tfId || teams[0]?.id || 'tf'
         const fitVec = Object.fromEntries(
           members.map(m => [m.id, (fitMatrix?.matrix?.[m.id]?.[tfTeamId]) ?? 0])
         )
-        const existingTeams = (currentTeams.length > 0 ? currentTeams : []).map(t => ({
-          id: t.id,
-          name: t.name,
-          requiredSkills: t.requiredSkills || t.required_skills || [],
-          size: t.size || 1,
-        }))
+        // 차출 허용 팀: candidateTeams 기반 필터
+        const allExistingTeams = currentTeams.length > 0 ? currentTeams : []
+        const allowedSet = candidateTeams.length > 0 ? new Set(candidateTeams) : new Set(allExistingTeams.map(t => t.id))
+        const existingTeams = allExistingTeams
+          .filter(t => allowedSet.has(t.id))
+          .map(t => ({
+            id: t.id, name: t.name,
+            requiredSkills: t.requiredSkills || t.required_skills || [],
+            size: t.size || 1,
+          }))
+        // 팀별 최대 차출: store의 maxAddPerTeam 사용
+        const resolvedMaxOut = Object.keys(maxAddPerTeam).length > 0
+          ? maxAddPerTeam
+          : conditions.maxOutPerTeam ?? 3
         tfResult = await getTFPlacement({
           members: members.map(m => ({
             id: m.id, name: m.name, role: m.role ?? '',
             gender: m.gender ?? '', experience: m.experience ?? null,
-            currentTeamId: m.currentTeamId ?? m.current_team_id ?? null,
+            currentTeamId: getMemberTeamId(m.id),
           })),
           teams: existingTeams,
           tfInfo: {
             id: tfTeamId,
             name: tfName || 'TF',
-            size: teams[0]?.size || 1,
+            size: tfSize ?? 10,
             requiredSkills: tfRequiredSkills || [],
           },
           skillMatrix,
           fitVector: fitVec,
-          conditions,
+          conditions: { ...conditions, maxOutPerTeam: resolvedMaxOut },
         })
         if (!tfResult?.tf_members) throw new Error('no tf_members')
       } catch (e) {
@@ -303,10 +334,35 @@ export default function Step3Conditions() {
     navigate('/step/4')
   }
 
-  // 실제 데이터 기반 적합도 매트릭스
-  const fitnessData = (members.length > 0 && analysisTeams.length > 0)
-    ? computeFitnessMatrix()
-    : { members: [], teams: [], scores: {} }
+  // 적합도 매트릭스: API 결과 우선 (멤버 필터링 + 0~1 정규화), 없으면 로컬 계산
+  const fitnessData = (() => {
+    if (fitMatrix?.matrix && Object.keys(fitMatrix.matrix).length > 0) {
+      const matrixIds = new Set(Object.keys(fitMatrix.matrix))
+      const filteredMembers = members.filter(m => matrixIds.has(m.id))
+      const targetTeams = analysisTeams.length > 0 ? analysisTeams : teams
+
+      // 표시 컴포넌트가 score*100을 %로 찍으므로 max로 나눠 0~1 정규화
+      const allScores = filteredMembers.flatMap(m =>
+        targetTeams.map(t => fitMatrix.matrix[m.id]?.[t.id] ?? 0)
+      )
+      const maxScore = Math.max(...allScores, 1)
+      const normalized = {}
+      for (const mid of matrixIds) {
+        normalized[mid] = {}
+        for (const t of targetTeams) {
+          normalized[mid][t.id] = (fitMatrix.matrix[mid]?.[t.id] ?? 0) / maxScore
+        }
+      }
+      return {
+        members: filteredMembers.map(m => ({ id: m.id, name: m.name })),
+        teams: targetTeams.map(t => ({ id: t.id, name: t.name })),
+        scores: normalized,
+      }
+    }
+    if (matrixMembers.length > 0 && analysisTeams.length > 0)
+      return computeFitnessMatrix()
+    return { members: [], teams: [], scores: {} }
+  })()
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -470,10 +526,14 @@ export default function Step3Conditions() {
                 />
                 <Slider
                   label="스킬 평균 레벨 하한"
-                  min={1} max={5} step={0.1}
-                  value={conditions.minSkillLevel ?? 2.8}
+                  min={phase1Info?.avgLevelRange?.min ?? 1}
+                  max={phase1Info?.avgLevelRange?.max ?? 5}
+                  step={0.1}
+                  value={conditions.minSkillLevel ?? phase1Info?.avgLevelRange?.mean ?? 2.8}
                   onChange={v => set('minSkillLevel', Math.round(v * 10) / 10)}
-                  recommendedValue="조직 평균"
+                  recommendedValue={phase1Info?.avgLevelRange?.mean != null
+                    ? `팀 평균 ${phase1Info.avgLevelRange.mean.toFixed(1)}`
+                    : '조직 평균'}
                 />
                 <div className="flex items-center justify-between">
                   <div>
