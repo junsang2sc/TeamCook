@@ -2,7 +2,7 @@
 
 ---
 
-## 개발 진행 현황 (2026-06-27 기준)
+## 개발 진행 현황 (2026-06-28 기준)
 
 ### 완료된 작업
 - [x] **프론트엔드 초기화** — React + Vite + Tailwind v4 + Zustand + Recharts + @hello-pangea/dnd
@@ -43,35 +43,65 @@
 - [x] **결과 보기 / 다시 배치** — 스토어 복원 후 4단계/3단계로 이동
 - [x] **Navbar + Landing nav 아카이브 링크 추가**
 
-### 랜딩 모션 + About 페이지 추가 (2026-06-26)
+### 랜딩 모션 + UI 개선 (2026-06-25~26)
 - [x] **Framer Motion 설치** — `framer-motion@12`
-- [x] **랜딩 히어로 모션** — 냄비 SVG fade+scale up → 원/삼각/다이아몬드 도형 spring 낙하 + 흔들림 → 냄비 bounce → 헤드카피/서브카피/카드 stagger 페이드인
-- [x] **헤드카피 변경** — "좋은 팀은 우연이 아닙니다" (gradient-brand)
-- [x] **서비스 소개 페이지 (`/about`)** — 6섹션: 히어로 / 문제정의 3카드 / 솔루션 3카드(다크밴드) / 작동원리 3단계 / 도메인 지식 아코디언 / CTA
-- [x] **App.jsx `/about` 라우트 추가**
-- [x] **랜딩 Nav에 "서비스 소개" 링크 추가**
-
-### UI/브랜드 개선 완료 (2026-06-25)
-- [x] **NanumSquareNeo 폰트 적용** — 굵기 1단계 업 매핑 (300→bRg, 400→cBd, 700→dEb, 800/900→eHv)
-- [x] **TeamCooK 컬러셋 전면 교체** — 브랜드 4색 (`#4D9EED` 블루 / `#4DC2A8` 틸 / `#FABF4B` 앰버 / `#485671` 네이비) 적용
-- [x] **로고·아이콘 에셋 적용** — `public/TeamCooK Logo.png` + `public/TeamCook Icon.png`
-  - 랜딩 네비: 아이콘만 / 헤드카피 영역: 로고 / Step1~5 Navbar: 아이콘+로고 병렬
-- [x] **랜딩 페이지 전면 재작성** — 헤드카피("아는 사람 말고, 맞는 사람으로"), 3단계 플로우 배너, hover 펼침 카드, 맥락 태그
-- [x] **Step2 인사이트 카드 UI 개선** — 스킬 희귀도·인재유형 탭 필터, 수요공급 차트 가시성 개선 (듀얼 바)
-- [x] **Step4 변경 전/후 탭 위치 수정** — 전체 너비 → 팀 상세 패널 내부로 이동
-- [x] **MemberPopup 컴포넌트** — 구성원 스킬 상세 팝업 (Step4·Step5 공통, LevelDots, 상위 6개 스킬 칩)
-- [x] **WhiskLoader 12프레임 애니메이션** — `public/loading/Loading 1.png ~ Loading 12.png` 순환 루프
-- [x] **gradient-brand 업데이트** — `#4D9EED → #4DC2A8 → #FABF4B` (블루→틸→앰버)
+- [x] **랜딩 히어로 모션** — 최초 방문: 풀 애니메이션(재료 낙하→냄비 bounce→헤드카피 stagger); 재방문: 루프 애니메이션(재료 낙하→뚜껑 닫힘→바운스→열림)
+- [x] **pot cover icon 연동** — `public/pot cover icon.svg`, 왼쪽 축 고정 회전으로 열고 닫힘
+- [x] **About 페이지 제거** — 랜딩 내 서비스 소개 통합 (별도 `/about` 라우트 없음)
+- [x] **Archive 개선** — 새 배치 시작 드롭다운(신규배치/재배치/TF구성)
+- [x] **Navbar 개선** — 작업 중 '내 배치 기록' 숨김, 완료 단계 클릭 이동 지원, 높이 h-9(69px)로 통일
+- [x] **MemberPopup 너비 확장** — `max-w-3xl`
 - [x] **README.md 작성** — 서비스 플로우, 계산 공식, 개발현황, 아키텍처 문서화
 
-### 2단계 fit_score 알고리즘 백엔드 연결 완료 (2026-06-27)
-- [x] **`backend/services/fit_score.py`** — 노트북 로직 그대로 Python 함수로 변환 (preprocess/calc_idf/calc_kss/calc_difficulty/calc_talent_type/calc_fit_matrix)
+### UI/브랜드 개선 (2026-06-25)
+- [x] **SUITE 폰트 적용** — NanumSquareNeo → SUITE 교체 (Light/Regular/Medium/SemiBold/Bold/ExtraBold)
+- [x] **컬러셋 전면 교체** — Primary: `#2ECC87` 민트그린(CTA) / Accent-Coral: `#FFABB5`(희귀/경고) / Accent-Yellow: `#FFE586`(보통/기능)
+- [x] **로고·아이콘 에셋 적용** — `public/TeamCooK Logo.png` + `public/TeamCook Icon.png`
+  - 랜딩 네비: 아이콘만 / 헤드카피 영역: 로고 / Step1~5 Navbar: 아이콘+로고 병렬
+- [x] **랜딩 라이트 테마 전환** — 원형 그라데이션 오브 배경 애니메이션 추가
+- [x] **Step2 UI 개선** — 희귀도 탭·카드·바 희귀(코럴)/보통(옐로우)/보편(그린) 색상 토큰화
+- [x] **MemberPopup 컴포넌트** — 구성원 스킬 상세 팝업 (Step4·Step5 공통, LevelDots, 상위 6개 스킬 칩)
+- [x] **WhiskLoader 12프레임 애니메이션** — `public/loading/Loading 1.png ~ Loading 12.png` 순환 루프
+
+### 2단계 fit_score 알고리즘 백엔드 연결 (2026-06-27)
+- [x] **`backend/services/fit_score.py`** — 노트북 로직 Python 함수 변환 (preprocess/calc_idf/calc_kss/calc_difficulty/calc_talent_type/calc_fit_matrix)
 - [x] **`backend/routers/analyze.py`** — POST /api/analyze/eda (EDA 분석), POST /api/analyze/fit (적합도 매트릭스)
 - [x] **`backend/main.py`** — FastAPI 앱 진입점 + CORS 미들웨어
-- [x] **`backend/requirements.txt`** — fastapi, uvicorn, pydantic
+- [x] **`backend/requirements.txt`** — fastapi, uvicorn, pydantic, pulp
 - [x] **`frontend/src/api/index.js`** — analyzeEda(), analyzeFit() 함수 추가
 - [x] **`frontend/src/store/useStore.js`** — edaResult/selectedIdf/selectedKss/selectedDiff/fitMatrix/fitStats 상태 + 액션 추가
-- [x] **`frontend/src/pages/Step2Analysis.jsx`** — 전면 재작성: 카드1(IDF 희귀도)/카드2(KSS SPOF)/카드3(난이도)/카드4(인재유형) + 체크박스 선택 + 적합도 매트릭스 미리보기(과제중심/구성원중심)
+- [x] **`frontend/src/pages/Step2Analysis.jsx`** — 전면 재작성: 카드1(IDF 희귀도)/카드2(KSS SPOF)/카드3(난이도)/카드4(인재유형) + 체크박스 선택 + 적합도 매트릭스 미리보기
+- [x] **EDA 백엔드 실패 시 클라이언트 mock fallback** — Step2 진행 보장
+
+### 백엔드 ILP 배치 알고리즘 구현 (2026-06-27~28)
+- [x] **`backend/services/placement.py`** — 신규배치 ILP (PuLP + HiGHS/CBC 솔버), 1차(순수 적합도) → λ 자동계산 → 2차(소프트 제약) 2단계 구조
+- [x] **`backend/services/replacement.py`** — 재배치 ILP: 잉여인력 재배치, 기존팀 스킬 유지 제약
+- [x] **`backend/services/tf.py`** — TF 구성 ILP: 차출 후 원팀 공백 방지 제약
+- [x] **`backend/routers/placement.py`** — POST /api/placement (신규배치 결과), POST /api/placement/phase1 (AVG_LEVEL 슬라이더 범위 자동 산출)
+- [x] **`backend/routers/replacement.py`** — POST /api/replacement (재배치 결과)
+- [x] **`backend/routers/tf.py`** — POST /api/tf (TF 구성 결과)
+- [x] **신규/재배치/TF별 EDA(KSS) 및 fit matrix 대상 분기 처리**
+
+### Step2~4 기능 개선 (2026-06-27~28)
+- [x] **Step2 차출허용팀 설정** — 단일 컬럼 레이아웃, 일괄 ±1 버튼, 재배치/TF 기존 팀 현황 + MAX_ADD 입력 단계 추가
+- [x] **Step2 어려운 스킬 전체 선택** — difficulty >= 0.7 기준 일괄 선택 버튼
+- [x] **Step2 IDF/Difficulty 요약 패널** — KSS 안내 메시지 추가
+- [x] **Step2 TF KSS** — 전체 과제 수요 반영 + TF 과제 수요 컬럼 분리 표시
+- [x] **Step3 팀당 인원수 세부 조정 팝업** — 합계 불일치 경고 및 배치 차단
+- [x] **Step3 배치 옵션 세분화** — 직위/연차/학력/근무지 분리, 전체선택/해제 버튼
+- [x] **Step3 연차 조화 옵션 제거** — 모든 플로우에서 제외
+- [x] **Step3 재배치** — 팀당 인원수 입력 숨김, teamSizeMismatch 검증 제외
+- [x] **Step4 3단 레이아웃** — 팀 카드 4열 + 구성원 패널 + 배치 조정
+- [x] **Step4 재배치 결과** — 재배치 인원 현황 패널 + 기존 팀 영향도(영입 전/후, 스킬 커버리지 비율)
+- [x] **Step4 TF 플로우 수동조정** — TF + 기존 팀 전체 배치 연결
+- [x] **재배치 최대영입수 기본값** — 엑셀 추가수용가능인원 컬럼값으로 자동 설정
+
+### 랜딩 페이지 개선 (2026-06-28)
+- [x] **히어로 캐치프라이즈 교체** — "딱 맞는 스킬, 딱 맞는 팀" / 서브 "스킬 데이터를 올리면 최적의 팀 배치를 자동으로 제안합니다"
+- [x] **문제 섹션 전면 개편** — 2컬럼 카드: 좌(Recharts 수평 바 차트 + 통계 근거) / 우(TEAMBLIND 현장 목소리 말풍선)
+- [x] **솔루션 섹션 개편** — 타이틀 "같은 엔진으로 세 가지 배치 과제를 해결합니다" + 서브타이틀 + FLOW_OPTIONS 카드에 `tag`(핵심 장치) 추가
+- [x] **FLOW_OPTIONS tag 필드 추가** — 신규배치/재배치/TF 각 카드에 핵심 장치 레이블 표시
+- [x] **bullets 숫자 구분** — 점 → 번호(1. 2. 3.) + 차콜(#404040) 색상 적용
 
 #### 백엔드 실행 방법
 ```bash
@@ -80,17 +110,6 @@ pip install -r requirements.txt
 uvicorn main:app --reload   # http://localhost:8000
 ```
 
-### 미완료 (Should/Could Have)
-- [ ] PDF 내보내기
-- [ ] 실제 엑셀 템플릿 파일 생성 및 다운로드 연결 (`public/templates/`)
-- [ ] Supabase 링크 공유 (`/api/share`)
-- [ ] 백엔드 API 연결 (현재는 mock fallback 처리)
-
-### 엑셀 템플릿 파일 구조 (추후 생성 필요)
-- `public/templates/TeamFit_템플릿.xlsx` — Sheet1 구성원_스킬현황 / Sheet2 스킬_목록 / Sheet3 팀_과제정보
-- `public/templates/TeamFit_재배치_템플릿.xlsx` — Sheet1 기존_배치현황
-- Sheet3 배치방식 셀 위치: B2 (동일과제 / 다른과제 / 혼합)
-- 재배치 파일 재배치시나리오 셀 위치: B2
 
 ### 프론트엔드 실행 방법
 ```bash
@@ -124,7 +143,6 @@ npm run dev   # http://localhost:5173
 | LLM | Claude API (claude-sonnet-4-6) |
 | 파일 처리 | Papa Parse (CSV), SheetJS (엑셀) |
 | 임시 저장 | LocalStorage |
-| 링크 공유 | Supabase |
 | 배포 | Vercel (프론트) + Railway (백엔드) |
 
 ---
@@ -156,20 +174,17 @@ teamfit/
 ├── backend/                   # FastAPI 앱
 │   ├── main.py                # FastAPI 앱 진입점
 │   ├── routers/
-│   │   ├── analyze.py         # /api/analyze
-│   │   ├── placement.py       # /api/placement
+│   │   ├── analyze.py         # /api/analyze (EDA + fit matrix)
+│   │   ├── placement.py       # /api/placement, /api/placement/phase1
 │   │   ├── replacement.py     # /api/replacement (재배치 전용)
-│   │   ├── validate.py        # /api/validate
-│   │   ├── recompute.py       # /api/recompute
-│   │   ├── comment.py         # /api/comment (Claude API)
-│   │   └── share.py           # /api/share (Supabase)
+│   │   └── tf.py              # /api/tf (TF 구성 전용)
 │   ├── services/
-│   │   ├── analysis.py        # 희귀도, 인재유형, SPOF 분석 로직
-│   │   ├── placement.py       # 신규배치 알고리즘
-│   │   ├── replacement.py     # 재배치 알고리즘 (차출 가능 여부 검증 포함)
-│   │   └── llm.py             # Claude API 연동
-│   ├── models/                # Pydantic 데이터 모델
-│   └── tests/                 # 단위 테스트
+│   │   ├── fit_score.py       # EDA 분석 로직 (IDF/KSS/난이도/인재유형/fit matrix)
+│   │   ├── placement.py       # 신규배치 ILP 알고리즘 (PuLP + HiGHS/CBC)
+│   │   ├── replacement.py     # 재배치 ILP (기존팀 스킬 유지 제약)
+│   │   └── tf.py              # TF 구성 ILP (원팀 공백 방지 제약)
+│   ├── notebooks/             # 알고리즘 개발용 Jupyter 노트북
+│   └── requirements.txt
 │
 ├── design.md                  # 디자인 가이드 (디자인 결정의 유일한 기준)
 └── CLAUDE.md                  # 이 파일
@@ -261,228 +276,85 @@ TeamFit은 두 가지 배치 유형을 지원한다. 랜딩 페이지에서 시�
 
 ### 랜딩 페이지
 
-- 헤드카피: "팀 구성, 이제 감이 아닌 데이터로"
-- 사용 맥락 태그: 회사 TF / 학회 / 동아리 / 강의 팀 프로젝트 / 스터디
 - 재방문 감지: LocalStorage에 저장된 세션이 있으면 "이전에 입력하던 데이터가 있습니다. 이어서 하시겠습니까?" 팝업 표시
-
-**배치 유형 선택 (CTA 영역)**
-
-"지금 시작하기" 단일 버튼 대신 두 가지 옵션 카드:
-
-```
-┌──────────────────────────┐  ┌──────────────────────────┐
-│        신규배치           │  │         재배치            │
-│                          │  │                          │
-│  팀을 처음부터 구성할 때  │  │  기존 팀에서 인원을       │
-│                          │  │  조정할 때                │
-│  · 전체 구성원 배치       │  │  · 잉여 인력 흡수         │
-│  · 빈 팀에 처음 배정      │  │  · 스킬 갭 보완           │
-│                          │  │  · TF 차출                │
-│  [신규배치 시작하기]      │  │  [재배치 시작하기]        │
-└──────────────────────────┘  └──────────────────────────┘
-```
-
-선택한 배치 유형은 전역 상태 `placementType: 'new' | 're'`에 저장되며 이후 모든 단계에 반영됨.
+- 배치 유형 선택: 신규배치 / 재배치 / TF 구성 3카드 (hover 펼침)
+- 선택한 배치 유형은 전역 상태 `placementType: 'new' | 're' | 'tf'`에 저장되며 이후 모든 단계에 반영됨
 
 ---
 
 ### 1단계 — 데이터 입력
 
-입력 모듈 순서 (순차 활성화):
-이전 모듈이 완성되어야 다음 모듈 활성화.
+엑셀 템플릿 업로드 방식. `placementType`에 따라 파서 자동 분기.
 
-**신규배치**: 모듈 B → A → C → D
-**재배치**: 모듈 B → A → C → D → E
+- **신규배치**: 구성원 스킬 매트릭스 + 팀/과제 정보 (배치방식 B3 셀)
+- **재배치**: 신규배치 + 기존 배치 현황 (재배치시나리오 B3 셀)
+- **TF 구성**: 기존 팀 배치 현황 + TF 필요 스킬 정의
 
-#### 모듈 B. 스킬 목록 정의
-- 스킬명, 카테고리 (기술/커뮤니케이션/도메인 지식/자유입력), 중요도 (1~5)
-- 자주 쓰이는 스킬 태그 버튼 제공
-- 도메인별 프리셋 제공 (IT 개발팀 / 마케팅팀 / 학술 연구팀 / 동아리)
-
-#### 모듈 A. 구성원 정보
-- 이름(익명 ID), 역할/직위 (팀장급/중간급/주니어/자유입력), 연차 (선택), 성별 (선택)
-- 테이블 형태 행 추가 방식
-- 행 복사 기능 제공
-
-#### 모듈 C. 구성원별 스킬 보유 현황
-- 구성원 × 스킬 매트릭스 테이블
-- 셀 클릭으로 레벨 입력 (1~5, 공란=0 자동 처리)
-- 행/열 고정 (구성원/스킬 수 많아도 헤더 유지)
-
-#### 모듈 D. 팀/과제 정보
-배치 방식 선택 (진입 시 가장 먼저):
-
-```
-① 하나의 과제를 여러 팀이 함께 수행
-   → 모든 팀에 동일한 필요 스킬 기준 적용
-   → 팀 간 스킬 균형 분산이 핵심 목표
-
-② 팀마다 서로 다른 과제 수행
-   → 각 팀마다 필요 스킬을 별도로 정의
-   → 과제 적합도 최대화가 핵심 목표
-
-③ 혼합 (일부 팀은 같은 과제, 일부는 다른 과제)
-   → 팀 카드별로 독립/공동 과제 토글 선택
-```
-
-#### 모듈 E. 기존 배치 현황 + 재배치 시나리오 (재배치 전용)
-
-**기존 팀 배치 현황 입력**:
-- 현재 각 구성원이 어느 팀에 소속되어 있는지 입력
-- 입력 방식: 모듈 A 테이블에 "현재 소속팀" 컬럼 추가 또는 별도 드롭다운
-- 팀에 소속되지 않은 인원 = 잉여 인력으로 자동 분류
-
-**재배치 시나리오 선택**:
-
-```
-어떤 상황인가요?
-
-A. 잉여 인력 흡수
-   특정 과제/팀이 종료되어 인원을 다른 팀에 배치해야 함
-   → 잉여 인력만 배치 대상, 기존 팀은 유지
-
-B. 스킬 갭 보완
-   특정 팀에 필요한 스킬이 부족해 다른 팀에서 인원을 차출해야 함
-   → 차출 대상 팀과 수혈 대상 팀을 지정
-   → 차출 시 기존 팀 스킬 공백 여부 자동 검증
-
-C. TF 구성
-   여러 팀에서 인원을 차출해 신규 TF를 구성해야 함
-   → TF 필요 스킬 정의
-   → 차출 후 기존 팀 공백 없는 인원만 후보
-
-D. 신규 인원 추가
-   새로운 구성원이 합류하여 기존 팀에 배치해야 함
-   → 신규 인원만 배치 대상, 기존 팀 구성 유지
-```
-
----
-
-배치 불가 상황 감지 및 안내 (신규배치/재배치 공통):
-
-| 상황 | 메시지 | 해결 방향 |
-|---|---|---|
-| 팀 × 인원 합 > 전체 구성원 수 | "인원이 부족합니다. 팀 수나 팀당 인원을 줄이거나, 구성원을 추가해주세요." | 팀 수 조정 / 구성원 추가 버튼 |
-| 희귀 스킬 보유자 1명인데 요구 팀 2개 이상 | "OO 스킬 보유자가 1명뿐이라 모든 팀을 커버하기 어렵습니다. 선택 조건으로 변경하시겠습니까?" | 필수→선택 변경 버튼 |
-| 조건 간 충돌 | "설정한 조건을 동시에 충족하는 배치가 불가능합니다. 아래 조건 중 하나를 완화해주세요." | 충돌 조건 하이라이트 |
-| 차출 시 기존 팀 스킬 하한 미달 (재배치) | "OOO님을 차출하면 A팀의 Python 스킬 평균이 2.3으로 기준 미달이 됩니다." | 다른 후보 제안 버튼 |
-
-하단:
-- 입력 완료율 프로그레스 바
-- "분석 시작하기" 버튼 (필수 항목 미입력 시 비활성화)
+파싱 완료 시 요약 카드 + 오류/경고 표시. "분석 시작하기" 버튼으로 2단계 진입.
 
 ---
 
 ### 2단계 — 자동 분석
 
-로딩 중 단계별 텍스트 표시:
-"스킬 희귀도 계산 중..." → "인재 유형 분류 중..." → "팀 간 스킬 갭 분석 중..."
+WhiskLoader 최소 3초 로딩 후 인사이트 카드 표시. 백엔드 EDA 실패 시 클라이언트 mock fallback.
 
-**재배치 시 추가 로딩 텍스트**:
-"기존 팀 스킬 현황 분석 중..." → "차출 가능 인원 검증 중..."
+**카드 1. IDF 스킬 희귀도** (공통) — 희귀(코럴)/보통(옐로우)/보편(그린) 탭 필터
+**카드 2. KSS 수요-공급** (공통) — 전체 과제 수요 vs 보유 바 차트. TF는 TF 과제 수요 컬럼 분리
+**카드 3. 난이도** (공통) — difficulty >= 0.7 기준 어려운 스킬 일괄 선택 버튼
+**카드 4. 인재 유형** (공통) — 전문가형 / T자형 / 제너럴리스트형 분류
 
-인사이트 카드:
+**재배치/TF 추가 단계**: 기존 팀 현황 표시 + 차출허용팀 설정(일괄 ±1) + MAX_ADD 입력
 
-**카드 1. 스킬 희귀도 맵** (공통)
-- 보유자 수 기준: 희귀(1~2명) / 보통 / 보편
-- 시각화: 버블 차트 (버블 크기 = 보유자 수, 색상 = 희귀도)
-- 자동 인사이트 문구 생성
-
-**카드 2. 인재 유형 분류** (공통)
-- 전문가형 / T자형 / 제너럴리스트형
-- 시각화: 구성원별 레이더 차트 미니 카드 + 유형 뱃지
-
-**카드 3. 수요-공급 불균형** (공통, 배치 방식에 따라 문구 분기)
-- 시각화: 수요 vs 공급 바 차트
-
-**카드 4. 병목 스킬 & SPOF 경고** (공통)
-- 보유자 1명뿐인 스킬 목록
-- 빨간 경고 뱃지
-
-**카드 5. 팀별 요구 난이도** (신규배치 방식 ②일 때만 표시)
-- 필요 스킬 수 × 희귀도 가중치로 난이도 점수 산출
-
-**카드 6. 기존 팀 스킬 현황** (재배치 전용)
-- 현재 각 팀의 필수 스킬 커버리지 및 평균 레벨
-- 스킬 하한(2.8) 기준 여유도 표시 (여유 있음/주의/위험)
-- "이 팀은 인원 차출 시 리스크가 높습니다" 경고
-
-**카드 7. 차출 가능 인원 목록** (재배치 전용)
-- 재배치 대상 인원 중 차출해도 기존 팀 스킬 공백/하한 미달이 없는 인원 목록
-- 차출 불가 인원은 이유와 함께 표시 ("차출 시 A팀 Python 스킬 공백 발생")
+체크박스로 IDF/KSS/Difficulty 선택 후 적합도 매트릭스 생성 → "배치 조건 설정" 진입
 
 ---
 
 ### 3단계 — 배치 조건 설정
 
-각 조건 옆 추천값 + 툴팁 제공.
-상단에 "추천 설정으로 빠르게 시작하기" 버튼.
-
-**기본 조건** (공통)
+**공통 조건**
 - 팀당 인원 균등 배분 (ON/OFF)
-- 직위/연차 조화 (ON/OFF)
-- 성별 균형 (ON/OFF)
+- 배치 고려 옵션: 직위 / 성별 / 학력 / 근무지 (전체선택/해제)
+- 스킬 평균 레벨 하한 슬라이더 (1차 ILP phase1 결과 기반 범위 자동 산출)
+- 필수 스킬 최소 보유자 수 슬라이더 (1~3명)
 
-**스킬 관련 조건** (공통)
-- 필수 스킬 최소 보유자 수 (슬라이더: 1~3명, 추천: 1명)
-- 스킬 평균 레벨 하한 (슬라이더: 1~5, 추천: 조직 평균 자동 계산)
-- SPOF 스킬 분산 배치 (ON/OFF)
+**신규배치 전용**
+- 팀당 인원수 세부 조정 팝업 (합계 불일치 시 배치 차단)
 
-**가중치** (공통)
-- 스킬 최적화 ←→ 팀 균형 (슬라이더)
-
-**배치 방식별 추가 조건** (신규배치)
-- ①: 팀 간 스킬 분산 균등도 슬라이더, 에이스 분산 ON/OFF
-- ②: 과제 적합도 우선순위 슬라이더, 난이도 반영 ON/OFF
-
-**재배치 전용 조건**
-- 기존 배치 유지 강도: 기존 팀 구성을 얼마나 유지할 것인가 (슬라이더)
-  - 왼쪽: 최소 변경 우선 (기존 팀 최대한 유지)
-  - 오른쪽: 최적 배치 우선 (기존 팀 구성 무시하고 전체 재최적화)
-- 기존 팀 스킬 하한 보호: 차출 후 기존 팀 스킬 평균 레벨 하한 유지 (ON/OFF, 기본 ON)
+**재배치/TF 전용**
+- 팀당 인원수 입력 숨김 (기존 팀 유지)
 
 ---
 
 ### 4단계 — 배치 결과 대시보드
 
-**상단 요약 바** (공통)
-- 전체 조건 충족률
-- 미충족 경고 뱃지
-- 전체 스킬 커버리지 점수
-- 배치 방식별 추가 지표
+**3단 레이아웃**: 팀 카드 4열 | 구성원 패널 | 배치 조정 패널
 
-**재배치 전용 상단 지표**
-- 변경된 인원 수 / 전체 인원 수 (예: "56명 중 12명 이동")
-- 기존 팀 스킬 하한 유지 여부
+**팀 카드** (공통)
+- 팀명 + 스킬 커버리지 (coveredCount/total)
+- 팀 클릭 시 구성원 패널 열림
+- 미충족 팀 수 카운트 (팀 단위 중복 제거)
+- 팀 카드 배치 근거 표시, 평균레벨 미달 스킬 전체 표시
 
-**팀별 카드** (공통)
-- 팀명 + 과제명
-- 구성원 목록 (이름, 직위, 인재 유형 뱃지)
-- 재배치 시 신규 합류 인원 강조 표시 (뱃지: "신규 배치")
-- 스킬 커버리지 바
-- 스킬 레이더 차트
-- 리스크 지표 (SPOF, 레벨 미달)
+**구성원 팝업** (공통) — MemberPopup: 스킬 상세, 유일 기여 스킬 하이라이트
 
-**변경 전/후 비교 뷰** (재배치 전용)
-- 토글로 "변경 전" / "변경 후" 전환
-- 또는 좌우 분할 뷰로 동시 비교
-- 이동된 인원은 화살표로 시각화
+**재배치 전용**
+- 재배치 인원 현황 패널 (이동된 구성원 목록)
+- 기존 팀 영향도 패널: 영입 전/후 스킬 커버리지 비율 비교
 
-**사이드 패널** (공통)
-- 배치 전후 스킬 갭 비교
-- 가장 균형 잡힌 팀 / 가장 리스크 높은 팀 하이라이트
-- Claude 에이전트 코멘트 (비동기 로딩)
+**TF 전용** — TFDashboard: 선발 인원/분포, 기존 팀 영향도(차출/잔류/성비·직급·스킬)
+
+CSV 내보내기 + 아카이브 자동 저장
 
 ---
 
 ### 5단계 — 수동 조정
 
+- 이름/사번/스킬명 검색 → 결과 카드 클릭 시 해당 구성원 카드로 스크롤 + 하이라이트
 - 드래그앤드롭으로 구성원 팀 간 이동
-- 이동 즉시: 해당 팀 커버리지 수치만 업데이트 (경량 계산)
-- "변경사항 적용" 버튼 클릭 시: 전체 조건 충족률 재계산
-- 조건 위반 시 팝업 경고 (강제 차단 아님, 계속/취소 선택)
-- 재배치 시: 기존 팀 스킬 하한 미달 경고도 포함
-- 히스토리 패널 + Undo + 알고리즘 결과 초기화 버튼
+- 이동 즉시: 팀 헤더 스킬 커버리지 수치 + 필수 스킬 칩 색상 실시간 업데이트
+- 원팀 필수 스킬 보유자 0명 발생 시 이동 차단 + 경고 confirm 팝업
+- Undo + 알고리즘 결과 초기화 버튼
+- "변경사항 적용" 버튼으로 store 반영
 
 ---
 
@@ -643,40 +515,31 @@ Supabase에 결과 저장 후 공유 URL 반환
 
 ## 알고리즘 명세
 
-### 신규배치: 코사인 유사도 기반 배치
+### 신규배치: 2단계 ILP (Integer Linear Programming)
 
 ```python
-# 인원 스킬 벡터
-member_vector = [skill_level_1, ..., skill_level_n]
+# 1차 ILP: 순수 적합도 최대화 (소프트 제약 없이)
+#   → 1차 결과로 AVG_LEVEL 슬라이더 범위 자동 산출 (phase1 엔드포인트)
+# λ 자동계산: 데이터 기반 LAM_COV/GENDER/RANK 자동 산출 (하드코딩 제거)
+# 2차 ILP: 소프트 제약(스킬 커버리지, 성별, 직급 균형) + 적합도 최적화
 
-# 과제 필수 스킬 벡터 (중요도 가중치 반영)
-task_vector = [importance_or_1_if_required, 0, ...]
-
-# 적합도 = 코사인 유사도
-fitness = cosine_similarity(member_vector, task_vector)
+# 적합도 매트릭스 = fit_score.py의 calc_fit_matrix() 결과 (IDF·KSS·Difficulty 가중)
+# 솔버: PuLP + HiGHS / CBC
 ```
 
-### 재배치: 차출 가능 여부 검증 후 배치
+### 재배치: ILP (기존팀 스킬 유지 제약)
 
 ```python
-# Step 1. 차출 가능 여부 검증
-def is_extractable(member, current_team, min_skill_level=2.8):
-    for skill in current_team.required_skills:
-        remaining_members = current_team.members - {member}
-        avg_level = mean([m.skill_level(skill) for m in remaining_members])
-        if avg_level < min_skill_level:
-            return False, f"{skill} 스킬 평균 레벨 {avg_level:.1f}로 기준 미달"
-        if len([m for m in remaining_members if m.skill_level(skill) > 0]) == 0:
-            return False, f"{skill} 스킬 보유자 0명"
-    return True, None
+# 잉여인력 재배치: 기존 팀 스킬 평균 레벨 하한(min_skill_level) 유지 제약
+# 차출 가능 여부: 차출 후 원팀 스킬 커버리지 공백/하한 미달 여부 검증
+# 변경 최소화 가중치: 기존 팀 유지 강도 반영
+```
 
-# Step 2. 차출 가능 인원 중 적합도 계산
-extractable = [m for m in candidates if is_extractable(m, m.current_team)[0]]
-fitness_scores = {m: cosine_similarity(m.vector, target_team.vector) for m in extractable}
+### TF 구성: ILP (원팀 공백 방지 제약)
 
-# Step 3. 변경 최소화 가중치 반영
-# change_minimization_weight가 높을수록 현재 팀에 가까운 배치 선호
-final_score = fitness_score * (1 - w) + same_team_bonus * w
+```python
+# 차출 후 원팀 필수 스킬 보유자 0명 방지 제약
+# TF 필요 스킬 커버리지 최대화
 ```
 
 ### 공통 제약 조건 처리

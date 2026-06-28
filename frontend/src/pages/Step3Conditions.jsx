@@ -47,6 +47,11 @@ export default function Step3Conditions() {
     : 1
   const [teamSize, setTeamSize] = useState(null)
   const [teamSizeExpanded, setTeamSizeExpanded] = useState(false)
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') setTeamSizeExpanded(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
   const [perTeamSize, setPerTeamSize] = useState({})   // { teamId: number }
 
   // perTeamSize 초기화: teams가 로드되면 전역 teamSize로 채움

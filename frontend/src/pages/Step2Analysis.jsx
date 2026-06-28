@@ -455,14 +455,16 @@ export default function Step2Analysis() {
                         </div>
                         <div className="text-sm text-body">미달스킬</div>
                       </div>
-                      <div className="text-center">
-                        {{
-                          safe:    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#d1fae5] text-[#065f46] text-sm font-medium">● 안전</div>,
-                          caution: <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#fef3c7] text-[#92400e] text-sm font-medium">● 주의</div>,
-                          danger:  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#fee2e2] text-[#991b1b] text-sm font-medium">● 위험</div>,
-                        }[ts.safetyLevel]}
-                        <div className="text-sm text-body mt-0.5">차출 안전도</div>
-                      </div>
+                      {isTF && (
+                        <div className="text-center">
+                          {{
+                            safe:    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#d1fae5] text-[#065f46] text-sm font-medium">● 안전</div>,
+                            caution: <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#fef3c7] text-[#92400e] text-sm font-medium">● 주의</div>,
+                            danger:  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#fee2e2] text-[#991b1b] text-sm font-medium">● 위험</div>,
+                          }[ts.safetyLevel]}
+                          <div className="text-sm text-body mt-0.5">차출 안전도</div>
+                        </div>
+                      )}
                       <div className="text-center">
                         <div className="font-mono font-semibold text-ink">{(ts.femaleRatio*100).toFixed(0)}%</div>
                         <div className="text-sm text-body">여성비율</div>

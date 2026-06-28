@@ -23,6 +23,12 @@ export default function TFDashboard() {
   const [remainingPopup, setRemainingPopup] = useState(null) // { teamId, members }
 
   useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') setRemainingPopup(null) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  useEffect(() => {
     const result = storedTfResult
       || buildMockTFResult({ members, skills, skillMatrix, currentAssignment, currentTeams, tfRequiredSkills, minSkillLevel: conditions?.minSkillLevel ?? 2.8 })
     setTfResult(result)

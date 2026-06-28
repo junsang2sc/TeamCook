@@ -22,10 +22,17 @@ export default function Step5Adjust() {
   const [board, setBoard] = useState(adjustedPlacement || base.placement || {})
   const [search, setSearch] = useState('')
   const [selectedMember, setSelectedMember] = useState(null) // mid
+  const [highlightMid, setHighlightMid] = useState(null)
 
   useEffect(() => {
     setBoard(adjustedPlacement || base.placement || {})
   }, [adjustedPlacement, base.placement])
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') setSelectedMember(null) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   // placementResult에 memberNames가 있으면 우선 사용, 없으면 members store에서 생성
   const memberNames = base.memberNames
@@ -75,12 +82,30 @@ export default function Step5Adjust() {
     if (!result.destination) return
     const { source, destination, draggableId } = result
     if (source.droppableId === destination.droppableId) return
+
     const newBoard = JSON.parse(JSON.stringify(board))
     Object.keys(newBoard).forEach(tid => {
       newBoard[tid] = newBoard[tid].filter(mid => mid !== draggableId)
     })
     if (!newBoard[destination.droppableId]) newBoard[destination.droppableId] = []
     newBoard[destination.droppableId].splice(destination.index, 0, draggableId)
+
+    // 원팀 필수 스킬 커버 해제 여부 검증
+    const srcTeamInfo = effectiveTeams.find(t => t.id === source.droppableId)
+    const srcRequired = srcTeamInfo?.requiredSkills || []
+    const uncoveredSkills = srcRequired.filter(sid =>
+      !newBoard[source.droppableId].some(mid => (skillMatrix?.[mid]?.[sid] ?? 0) > 0)
+    )
+
+    if (uncoveredSkills.length > 0) {
+      const srcTeamName = teamNames[source.droppableId] || source.droppableId
+      const skillLabels = uncoveredSkills.map(sid => skillNameMap[sid] || sid).join(', ')
+      const ok = window.confirm(
+        `⚠️ 이동을 차단합니다.\n\n${srcTeamName}의 필수 스킬 [${skillLabels}] 보유자가 없어집니다.\n\n그래도 이동하시겠습니까?`
+      )
+      if (!ok) return
+    }
+
     setBoard(newBoard)
   }
 
@@ -141,7 +166,7 @@ export default function Step5Adjust() {
                       <button
                         key={mid}
                         className="w-full text-left p-2.5 border border-hairline rounded-md bg-surface hover:bg-muted/50 transition-colors"
-                        onClick={() => setSelectedMember(mid)}
+                        onClick={() => setHighlightMid(mid)}
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span className="font-medium text-sm text-ink">{memberNames[mid] || mid}</span>
@@ -167,7 +192,7 @@ export default function Step5Adjust() {
           </aside>
 
           {/* 오른쪽 팀 배치 보드 */}
-          <main className="flex-1 flex flex-col overflow-hidden">
+          <main className="flex-1 flex flex-col overflow-hidden" onClick={() => highlightMid && setHighlightMid(null)}>
             {/* 상단 고정 액션 바 */}
             <div className="flex items-center justify-between bg-surface border-b border-hairline px-4 py-2.5 shrink-0">
               <div className="flex gap-2">
@@ -200,6 +225,8 @@ export default function Step5Adjust() {
                     memberNames={memberNames}
                     getReasonSkills={getReasonSkills}
                     onSelectMember={setSelectedMember}
+                    highlightMid={highlightMid}
+                    onHighlightDone={() => setHighlightMid(null)}
                   />
                 ))}
               </div>
@@ -227,8 +254,23 @@ export default function Step5Adjust() {
   )
 }
 
-function TeamDropZone({ teamId, memberIds, teamNames, skillMatrix, skillNameMap, teams, memberNames, getReasonSkills, onSelectMember }) {
+function TeamDropZone({ teamId, memberIds, teamNames, skillMatrix, skillNameMap, teams, memberNames, getReasonSkills, onSelectMember, highlightMid, onHighlightDone }) {
   const [open, setOpen] = useState(true)
+  const isHighlightTarget = highlightMid && memberIds.includes(highlightMid)
+
+  useEffect(() => {
+    if (!isHighlightTarget) return
+    setOpen(true)
+    const el = document.getElementById(`member-card-${highlightMid}`)
+    if (el) {
+      setTimeout(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 50)
+    } else {
+      onHighlightDone()
+    }
+  }, [highlightMid])
+
   const teamInfo = (teams || []).find(t => t.id === teamId)
   const requiredSkills = teamInfo?.requiredSkills || []
   const coveredCount = requiredSkills.filter(sid =>
@@ -287,10 +329,11 @@ function TeamDropZone({ teamId, memberIds, teamNames, skillMatrix, skillNameMap,
                     <Draggable key={mid} draggableId={mid} index={i}>
                       {(p, snap) => (
                         <div
+                          id={`member-card-${mid}`}
                           ref={p.innerRef}
                           {...p.draggableProps}
                           {...p.dragHandleProps}
-                          className={`px-2 py-1.5 rounded-sm border cursor-grab ${snap.isDragging ? 'border-primary bg-primary-tint shadow-md' : 'border-hairline bg-canvas'}`}
+                          className={`px-2 py-1.5 rounded-sm border cursor-grab transition-colors ${snap.isDragging ? 'border-primary bg-primary-tint shadow-md' : highlightMid === mid ? 'border-primary bg-primary-tint' : 'border-hairline bg-canvas'}`}
                           onClick={() => onSelectMember(mid)}
                         >
                           <div className="text-[11px] font-medium text-ink leading-tight">{memberNames[mid] || mid}</div>

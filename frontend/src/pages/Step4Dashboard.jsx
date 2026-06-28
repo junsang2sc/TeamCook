@@ -67,6 +67,16 @@ export default function Step4Dashboard() {
   const [showOnlyWarning, setShowOnlyWarning] = useState(false)
   const teamGridRef = useRef(null)
 
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Escape') return
+      if (selectedMember) { setSelectedMember(null); return }
+      if (selectedTeamId) { setSelectedTeamId(null); return }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [selectedMember, selectedTeamId])
+
   // 팀별 경고 집계
   const warningsByTeam = (data.warnings || []).reduce((acc, w) => {
     const tid = w.team_id ?? w.teamId

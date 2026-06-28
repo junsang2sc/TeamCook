@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, LabelList } from 'recharts'
 import Button from '../components/ui/Button'
 import useStore from '../store/useStore'
 
@@ -21,9 +22,45 @@ const C = {
 const CONTEXTS = ['회사 TF', '학회', '동아리', '강의 팀 프로젝트', '스터디']
 
 const FLOW_OPTIONS = [
-  { id: 'new', icon: '◈', label: '신규 배치',  sublabel: '처음부터 팀을 만들 때',         cta: '신규배치 시작하기', bullets: ['전체 구성원을 빈 팀에 처음 배정', '코사인 유사도 기반 최적 배치', '스킬 희귀도·SPOF 자동 경고'] },
-  { id: 're',  icon: '◉', label: '재배치',      sublabel: '기존 팀에서 인원을 조정할 때',  cta: '재배치 시작하기',   bullets: ['잉여 인력·스킬 갭 시나리오 지원', '차출 가능 여부 자동 검증', '변경 전/후 비교 대시보드'] },
-  { id: 'tf',  icon: '◇', label: 'TF 구성',    sublabel: '여러 팀에서 인원을 차출할 때',  cta: 'TF 구성 시작하기',  bullets: ['필수 스킬 보유자 자동 탐색', '기존 팀 공백 없는 인원만 선발', '차출 전/후 팀 영향도 시각화'] },
+  {
+    id: 'new',
+    icon: '/icon/folder icon.png',
+    label: '신규 배치',
+    sublabel: '처음부터 팀을 만들 때',
+    cta: '신규배치 시작하기',
+    tag: '개인의 강점에 과제를 맞춤',
+    bullets: [
+      '스킬 데이터 업로드 한 번으로 시작',
+      '희귀 스킬·병목 인재를 자동으로 파악',
+      'ILP 알고리즘이 전체 최적 팀 구성 산출',
+    ],
+  },
+  {
+    id: 're',
+    icon: '/icon/glass icon.png',
+    label: '재배치',
+    sublabel: '기존 팀에서 인원을 조정할 때',
+    cta: '재배치 시작하기',
+    tag: '받는 팀까지 고려해 재배치',
+    bullets: [
+      '기존 팀 스킬 현황과 차출 가능 여부 자동 검증',
+      '잉여 인력 흡수·스킬 갭 보완 시나리오 지원',
+      '이동 전/후 스킬 커버리지 변화를 한눈에 비교',
+    ],
+  },
+  {
+    id: 'tf',
+    icon: '/icon/check icon.png',
+    label: 'TF 구성',
+    sublabel: '여러 팀에서 인원을 차출할 때',
+    cta: 'TF 구성 시작하기',
+    tag: '핵심 인재를 지키고 나머지로 짬',
+    bullets: [
+      'TF 필수 스킬 보유자를 자동으로 탐색',
+      '원팀에 공백이 생기지 않는 인원만 선발',
+      '차출 전/후 원팀 스킬 변화를 즉시 경고',
+    ],
+  },
 ]
 
 const PROBLEMS = [
@@ -39,15 +76,28 @@ const SOLUTIONS = [
 ]
 
 const HOW_STEPS = [
-  { step: '01', icon: '/icon/folder icon.png', label: '스킬 데이터 업로드', desc: '구성원 정보와 스킬 역량 점수를 엑셀로 업로드합니다', color: C.primary },
-  { step: '02', icon: '/icon/glass icon.png',  label: '자동 분석',          desc: '스킬 희귀도, 인재 유형, SPOF 탐지, 수요-공급 분석을 자동 수행합니다', color: C.teal },
-  { step: '03', icon: '/icon/check icon.png',  label: '최적 팀 배치',       desc: '조건 설정 후 알고리즘이 최적 배치를 생성합니다', color: C.hairline },
+  { step: '01', label: '스킬 데이터 업로드', desc: '구성원 정보와 스킬 역량 점수를 엑셀로 업로드합니다', color: C.primary },
+  { step: '02', label: '자동 분석',          desc: '스킬 희귀도, 인재 유형, SPOF 탐지, 수요-공급 분석을 자동 수행합니다', color: C.teal },
+  { step: '03', label: '최적 팀 배치',       desc: '조건 설정 후 알고리즘이 최적 배치를 생성합니다', color: C.hairline },
 ]
 
 const FAQ = [
-  { q: '스킬 택소노미(Skill Taxonomy)란?', a: '조직 내 모든 스킬을 일관된 분류 체계(기술·커뮤니케이션·도메인 지식 등)로 정의한 목록입니다. 동일한 스킬을 같은 이름으로 부름으로써 구성원 간 역량 비교를 가능하게 합니다.' },
-  { q: 'SPOF란?',                           a: 'Single Point of Failure의 약자입니다. 특정 스킬의 보유자가 1명뿐이어서, 그 사람이 팀을 떠나거나 차출되면 해당 역량이 전혀 없어지는 리스크 상황을 가리킵니다.' },
-  { q: '코사인 유사도란?',                   a: '두 벡터 간의 방향 유사성을 0~1 범위로 측정하는 지표입니다. 구성원의 스킬 벡터와 팀 필요 스킬 벡터의 코사인 유사도를 적합도 점수로 활용해, 수치적으로 가장 잘 맞는 조합을 찾습니다.' },
+  {
+    q: '스킬 택소노미(Skill Taxonomy)란?',
+    a: '구성원마다 다르게 부르던 스킬 이름을 하나의 기준으로 통일한 목록이에요.\nTeamCook은 이 목록을 기반으로 사람과 과제를 연결합니다.',
+  },
+  {
+    q: 'SPOF란?',
+    a: '특정 스킬을 딱 한 명만 갖고 있을 때, 그 사람이 빠지면 팀 전체가 그 역량을 잃게 되는 상황이에요.\nTeamCook은 이 위험을 자동으로 감지합니다.',
+  },
+  {
+    q: 'ILP란?',
+    a: 'Integer Linear Programming의 약자예요.\n500명 × 20개 과제의 모든 배치 조합을 동시에 고려해서 전체 적합도가 가장 높은 조합을 찾아주는 알고리즘입니다.\n사람이 순서대로 팀을 짜면 나중 팀이 불리해지는 문제를 해결합니다.',
+  },
+  {
+    q: '적합도(Fit Score)란?',
+    a: '이 사람이 이 과제에 얼마나 잘 맞는지를 나타내는 점수예요.\n해당 과제에 필요한 스킬을 얼마나, 얼마나 잘 갖고 있는지를 계산합니다.\n희귀하거나 수요가 많은 스킬에는 더 높은 가중치가 붙습니다.',
+  },
 ]
 
 /* ─── 도형 스펙 ──────────────────────────────────────── */
@@ -148,6 +198,12 @@ export default function Landing() {
     && sessionStorage.getItem('teamcook_hero_played') === '1'
   const [phase, setPhase] = useState(heroPlayed ? 3 : 0)
   const [openFaq, setOpenFaq] = useState(null)
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') setShowResume(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   useEffect(() => {
     if (skills.length > 0 || members.length > 0) setShowResume(true)
@@ -285,13 +341,13 @@ export default function Landing() {
         >
           {/* 헤드카피 — gradient-brand가 직접 opacity 영향 없이 렌더됨 */}
           <h1 className="font-extrabold leading-tight tracking-tight" style={{ fontSize: 52, color: C.ink, marginBottom: 16 }}>
-            아는 사람 말고{' '}
-            <span className="gradient-brand">맞는 사람으로!</span>
+            딱 맞는 스킬,{' '}
+            <span className="gradient-brand">딱 맞는 팀</span>
           </h1>
 
           {/* 서브카피 */}
           <p className="text-base" style={{ color: C.body, marginBottom: 40 }}>
-            스킬 택소노미 기반 팀 구성 — 데이터로 결정하세요!
+            스킬 택소노미 기반 팀 구성, 팀쿡과 함께해요!
           </p>
 
           {/* CTA 카드 */}
@@ -306,19 +362,19 @@ export default function Landing() {
               >
                 <div className="p-6 flex-1 text-left">
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="font-mono text-xl" style={{ color: C.primary }}>{flow.icon}</span>
+                    <img src={flow.icon} alt="" className="w-6 h-6 object-contain" />
                     <div>
                       <div className="text-base font-bold" style={{ color: C.ink }}>{flow.label}</div>
                       <div className="text-xs" style={{ color: C.body }}>{flow.sublabel}</div>
                     </div>
                   </div>
-                  <ul className="overflow-hidden max-h-0 group-hover:max-h-32 transition-all duration-300 space-y-1.5">
-                    {flow.bullets.map(b => (
-                      <li key={b} className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: C.body }}>
-                        <span className="mt-0.5 shrink-0" style={{ color: C.primary }}>·</span>{b}
+                  <ol className="overflow-hidden max-h-0 group-hover:max-h-32 transition-all duration-300 space-y-1.5">
+                    {flow.bullets.map((b, i) => (
+                      <li key={b} className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: '#404040' }}>
+                        <span className="mt-0.5 shrink-0 font-semibold" style={{ color: C.primary }}>{i + 1}.</span>{b}
                       </li>
                     ))}
-                  </ul>
+                  </ol>
                 </div>
                 <div className="px-6 pb-6">
                   <button
@@ -370,22 +426,86 @@ export default function Landing() {
           <div className="max-w-5xl mx-auto">
             <motion.div {...fadeUp(0)}><Eyebrow>Problem</Eyebrow></motion.div>
             <motion.h2 className="text-3xl font-bold mb-12 tracking-tight" style={{ color: C.ink }} {...fadeUp(0.1)}>
-              팀 구성, 지금 이렇게 하고 있진 않으신가요?
+              팀 배치, 지금 이렇게 하고 계신가요?
             </motion.h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {PROBLEMS.map((p, i) => (
-                <motion.div
-                  key={p.label}
-                  className="p-6 rounded-sm border"
-                  style={{ borderColor: C.hairline, backgroundColor: C.surface }}
-                  {...fadeUp(i * 0.1)}
-                >
-                  <div className="text-3xl mb-4">{p.icon}</div>
-                  <div className="text-xs font-mono uppercase tracking-widest mb-2" style={{ color: C.body }}>{p.label}</div>
-                  <p className="text-base font-medium leading-snug" style={{ color: C.ink }}>{p.desc}</p>
-                </motion.div>
-              ))}
+
+            {/* 2컬럼 카드 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+
+              {/* 왼쪽: 통계 근거 카드 */}
+              <motion.div
+                className="p-7 rounded-sm border flex flex-col"
+                style={{ borderColor: C.hairline, backgroundColor: '#fff' }}
+                {...fadeUp(0.1)}
+              >
+                <div className="text-xs font-mono uppercase tracking-widest mb-2" style={{ color: C.body }}>Research</div>
+                <h3 className="text-lg font-bold mb-1" style={{ color: C.ink }}>전문가도 직관에 의존합니다</h3>
+                <p className="text-sm leading-relaxed mb-6" style={{ color: '#404040' }}>
+                  통계 모형이 인간 판단보다 약 <strong>25% 더 정확한</strong> 결정을 내립니다.<br/>
+                  그럼에도 전문가의 <strong>85~97%</strong>는 여전히 직관에 상당 부분 의존합니다.
+                </p>
+                <div className="flex-1" style={{ minHeight: 110 }}>
+                  <ResponsiveContainer width="100%" height={110}>
+                    <BarChart
+                      layout="vertical"
+                      data={[
+                        { name: '인간 판단', value: 100 },
+                        { name: '통계 판단', value: 125 },
+                      ]}
+                      margin={{ top: 0, right: 48, left: 8, bottom: 0 }}
+                    >
+                      <XAxis type="number" domain={[0, 140]} hide />
+                      <YAxis type="category" dataKey="name" width={72} tick={{ fontSize: 12, fill: '#404040' }} axisLine={false} tickLine={false} />
+                      <Bar dataKey="value" radius={[0, 3, 3, 0]} barSize={28}>
+                        <LabelList dataKey="value" position="right" style={{ fontSize: 12, fontWeight: 600, fill: C.ink }} formatter={(v) => `~${v}`} />
+                        <Cell fill={C.hairline} />
+                        <Cell fill={C.primary} />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="text-xs mt-3" style={{ color: C.body }}>
+                  출처: MGMA, "Avoiding Bias in Day-to-Day Management Decisions"
+                </p>
+              </motion.div>
+
+              {/* 오른쪽: 현장 목소리 카드 */}
+              <motion.div
+                className="p-7 rounded-sm border flex flex-col gap-4"
+                style={{ borderColor: C.hairline, backgroundColor: '#fff' }}
+                {...fadeUp(0.2)}
+              >
+                <div className="text-xs font-mono uppercase tracking-widest mb-0" style={{ color: C.body }}>Real voices</div>
+                <h3 className="text-lg font-bold" style={{ color: C.ink }}>현장에서는 이런 일이 일어납니다</h3>
+
+                <div className="flex flex-col gap-3 flex-1">
+                  <div className="p-4 rounded-md text-sm leading-relaxed" style={{ backgroundColor: '#f3f4f6', color: '#1f2937' }}>
+                    💬 <span className="font-medium">"TF팀 구성은 보통 누가 해?</span><br/>
+                    임원이 TF꾸리라고 지시 → 팀장이 파트장에게 필요해보이는 사람 구성하라고 지시 → 파트장이 인솔.. 보통 이런거야?🤔"
+                    <p className="text-xs mt-2" style={{ color: '#9ca3af' }}>출처: TEAMBLIND</p>
+                  </div>
+                  <div className="p-4 rounded-md text-sm leading-relaxed" style={{ backgroundColor: '#f3f4f6', color: '#1f2937' }}>
+                    💬 <span className="font-medium">"TF팀 발령났더니 1키로 빠짐😭</span><br/>
+                    다른 팀원들은 발령 일주일만에 각각 7,3,3키로 빠짐.<br></br>나만 제일 편한 거 같아 미안하다"
+                    <p className="text-xs mt-2" style={{ color: '#9ca3af' }}>출처: TEAMBLIND</p>
+                  </div>
+                </div>
+              </motion.div>
             </div>
+
+            {/* 하단 한 줄 */}
+            <motion.div
+              className="p-5 rounded-sm border text-center"
+              style={{ borderColor: C.hairline, backgroundColor: C.surface }}
+              {...fadeUp(0.3)}
+            >
+              <p className="text-sm leading-relaxed" style={{ color: C.ink }}>
+                직무 적합도는 팀 성과와 강하게 연결됩니다. <strong>인구통계 다양성보다 스킬 적합도가 훨씬 중요합니다.</strong>
+              </p>
+              <p className="text-xs mt-1" style={{ color: C.body }}>
+                출처: Kristof-Brown et al.(2005), Wallrich et al.(2024)
+              </p>
+            </motion.div>
           </div>
         </section>
 
@@ -393,20 +513,34 @@ export default function Landing() {
         <section className="px-8 py-20" style={{ backgroundColor: C.navy }}>
           <div className="max-w-5xl mx-auto">
             <motion.div {...fadeUp(0)}><Eyebrow dark>Solution</Eyebrow></motion.div>
-            <motion.h2 className="text-3xl font-bold mb-12 tracking-tight" style={{ color: C.onDark }} {...fadeUp(0.1)}>
-              3가지 배치 시나리오를 지원합니다
+            <motion.h2 className="text-3xl font-bold mb-2 tracking-tight" style={{ color: C.onDark }} {...fadeUp(0.1)}>
+              같은 엔진으로 세 가지 배치 과제를 해결합니다
             </motion.h2>
+            <motion.p className="text-sm mb-12 leading-relaxed" style={{ color: 'rgba(250,251,252,0.60)' }} {...fadeUp(0.15)}>
+              제약과 정원만 바꾸면 신규배치·재배치·TF 구성을 동일한 ILP 엔진으로 처리합니다
+            </motion.p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {SOLUTIONS.map((s, i) => (
+              {FLOW_OPTIONS.map((flow, i) => (
                 <motion.div
-                  key={s.label}
-                  className="p-6 rounded-sm border"
-                  style={{ borderColor: 'rgba(201,218,234,0.15)', backgroundColor: C.navy }}
+                  key={flow.id}
+                  className="p-6 rounded-sm border flex flex-col"
+                  style={{ borderColor: C.hairline, backgroundColor: 'rgba(255,255,255,0.80)' }}
                   {...fadeUp(i * 0.1)}
                 >
-                  <div className="text-3xl mb-4">{s.icon}</div>
-                  <div className="text-base font-bold mb-2" style={{ color: s.accent }}>{s.label}</div>
-                  <p className="text-sm leading-relaxed" style={{ color: 'rgba(250,251,252,0.65)' }}>{s.desc}</p>
+                  <img src={flow.icon} alt="" className="w-8 h-8 object-contain mb-3" />
+                  <div className="text-base font-bold mb-1" style={{ color: C.ink }}>{flow.label}</div>
+                  <div className="text-xs mb-4" style={{ color: C.body }}>{flow.sublabel}</div>
+                  <ol className="space-y-1.5 flex-1">
+                    {flow.bullets.map((b, j) => (
+                      <li key={b} className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: '#404040' }}>
+                        <span className="shrink-0 font-semibold mt-0.5" style={{ color: C.primary }}>{j + 1}.</span>{b}
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="mt-5 pt-4 border-t" style={{ borderColor: C.hairline }}>
+                    <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: C.body }}>핵심 장치</div>
+                    <div className="text-xs font-medium" style={{ color: C.primary }}>{flow.tag}</div>
+                  </div>
                 </motion.div>
               ))}
             </div>
@@ -432,11 +566,6 @@ export default function Landing() {
                   <div className="absolute top-3 right-4 text-6xl font-black opacity-40 select-none" style={{ color: s.color }}>
                     {s.step}
                   </div>
-                  <div className="mb-4">
-                    {s.icon.startsWith('/')
-                      ? <img src={s.icon} alt="" className="w-8 h-8 object-contain" />
-                      : <span className="text-2xl">{s.icon}</span>}
-                  </div>
                   <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: s.color }}>{s.step}</div>
                   <div className="text-base font-bold mb-2" style={{ color: C.ink }}>{s.label}</div>
                   <p className="text-sm leading-relaxed" style={{ color: C.body }}>{s.desc}</p>
@@ -455,30 +584,36 @@ export default function Landing() {
             <motion.h2 className="text-3xl font-bold mb-8 tracking-tight" style={{ color: C.onDark }} {...fadeUp(0.1)}>
               용어 설명
             </motion.h2>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {FAQ.map((faq, i) => (
                 <motion.div
                   key={faq.q}
                   className="rounded-sm overflow-hidden border"
-                  style={{ borderColor: 'rgba(201,218,234,0.15)', backgroundColor: C.navy }}
+                  style={{ borderColor: 'rgba(201,234,218,0.45)', backgroundColor: 'rgba(255,255,255,0.08)' }}
                   {...fadeUp(i * 0.08)}
                 >
                   <button
-                    className="w-full flex items-center justify-between px-6 py-4 text-left transition-colors hover:opacity-80"
+                    className="w-full flex items-center justify-between px-6 py-4 text-left transition-opacity hover:opacity-80"
                     onClick={() => setOpenFaq(openFaq === i ? null : i)}
                   >
-                    <span className="text-sm font-medium" style={{ color: C.onDark }}>{faq.q}</span>
-                    <span className="ml-4 shrink-0 text-sm" style={{ color: C.teal }}>{openFaq === i ? '▲' : '▼'}</span>
+                    <span className="text-sm font-semibold" style={{ color: C.onDark }}>{faq.q}</span>
+                    <span className="ml-4 shrink-0 font-mono text-xs px-2 py-0.5 rounded-sm" style={{ color: C.primary, backgroundColor: 'rgba(46,204,135,0.15)', border: `1px solid rgba(46,204,135,0.35)` }}>
+                      {openFaq === i ? '접기 ▲' : '펼치기 ▼'}
+                    </span>
                   </button>
                   {openFaq === i && (
                     <motion.div
-                      className="px-6 pb-5 text-sm leading-relaxed border-t pt-4"
-                      style={{ color: 'rgba(250,251,252,0.70)', borderColor: 'rgba(201,218,234,0.12)' }}
+                      className="px-6 pb-5 pt-4 border-t"
+                      style={{ borderColor: 'rgba(201,234,218,0.30)' }}
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       transition={{ duration: 0.25 }}
                     >
-                      {faq.a}
+                      {faq.a.split('\n').map((line, j) => (
+                        <p key={j} className="text-sm leading-relaxed" style={{ color: 'rgba(250,251,252,0.82)', marginBottom: j < faq.a.split('\n').length - 1 ? 6 : 0 }}>
+                          {line}
+                        </p>
+                      ))}
                     </motion.div>
                   )}
                 </motion.div>
@@ -491,10 +626,10 @@ export default function Landing() {
         <section className="px-8 py-24 text-center" style={{ backgroundColor: C.canvas }}>
           <div className="max-w-4xl mx-auto">
             <motion.h2 className="text-4xl font-extrabold tracking-tight mb-3" style={{ color: C.ink }} {...fadeUp(0)}>
-              지금 팀을 요리해보세요
+              지금 팀을 요리해보세요!
             </motion.h2>
             <motion.p className="text-base mb-10" style={{ color: C.body }} {...fadeUp(0.1)}>
-              스킬 데이터만 있으면 10분 안에 최적 팀 배치 결과를 확인할 수 있습니다
+              스킬 데이터를 활용해 최적 팀 배치 결과를 확인할 수 있어요.
             </motion.p>
             <motion.div className="flex flex-col sm:flex-row gap-3 justify-center" {...fadeUp(0.2)}>
               <button onClick={() => handleStart('new')} className="px-6 py-3 font-mono text-sm rounded-sm transition-opacity hover:opacity-90" style={{ backgroundColor: C.primary, color: '#fff' }}>
