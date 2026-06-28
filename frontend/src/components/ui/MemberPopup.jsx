@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 import Badge from './Badge'
 
-const TYPE_LABELS = { specialist: '전문가형', t_shaped: 'T자형', generalist: '제너럴리스트형' }
-const TYPE_COLORS = { specialist: 'orange', t_shaped: 'periwinkle', generalist: 'mint' }
+const TYPE_LABELS = { '집중형': '집중형', '제너럴리스트형': '제너럴리스트형', '혼합형': '혼합형', specialist: '집중형', t_shaped: '혼합형', generalist: '제너럴리스트형' }
+const TYPE_COLORS = { '집중형': 'mint', '제너럴리스트형': 'coral', '혼합형': 'yellow', specialist: 'mint', t_shaped: 'yellow', generalist: 'coral' }
 
 /** 스킬 레벨 도트 표시 (1~5) */
 function LevelDots({ level }) {

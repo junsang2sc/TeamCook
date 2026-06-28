@@ -322,9 +322,8 @@ def calc_difficulty(pre: dict[str, Any]) -> dict[str, dict]:
 
 def calc_talent_type(pre: dict[str, Any]) -> dict[str, dict]:
     """
-    노트북 섹션 8.
     스킬 수 중앙값 & 레벨 분산 중앙값 기준으로 분류.
-    전문가형: 스킬 수 ≤ 중앙값 AND 분산 ≥ 중앙값
+    집중형: 스킬 수 ≤ 중앙값 AND 분산 ≥ 중앙값
     제너럴리스트형: 스킬 수 > 중앙값 AND 분산 < 중앙값
     혼합형: 나머지
     """
@@ -352,7 +351,7 @@ def calc_talent_type(pre: dict[str, Any]) -> dict[str, dict]:
 
     def classify(r: dict) -> str:
         if r["n_skills"] <= med_skills and r["std"] >= med_std:
-            return "전문가형"
+            return "집중형"
         if r["n_skills"] > med_skills and r["std"] < med_std:
             return "제너럴리스트형"
         return "혼합형"

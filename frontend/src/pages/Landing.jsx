@@ -341,8 +341,8 @@ export default function Landing() {
         >
           {/* 헤드카피 — gradient-brand가 직접 opacity 영향 없이 렌더됨 */}
           <h1 className="font-extrabold leading-tight tracking-tight" style={{ fontSize: 52, color: C.ink, marginBottom: 16 }}>
-            딱 맞는 스킬,{' '}
-            <span className="gradient-brand">딱 맞는 팀</span>
+            딱 맞는 <span className="gradient-brand">스킬</span>,{' '}
+            딱 맞는 <span className="gradient-brand">팀</span>
           </h1>
 
           {/* 서브카피 */}

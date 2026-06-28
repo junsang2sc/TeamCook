@@ -96,7 +96,7 @@ body {
    font-extrabold(800) font-black(900) */
 
 .gradient-brand {
-  background: linear-gradient(135deg, #2ECC87 0%, #FFE586 50%, #FFABB5 100%);
+  background: linear-gradient(135deg, #2ECC87 0%, #1A9E68 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

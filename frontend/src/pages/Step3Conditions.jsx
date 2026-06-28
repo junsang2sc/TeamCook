@@ -160,15 +160,20 @@ export default function Step3Conditions() {
     }
     const memberNames = members.reduce((a, m) => { a[m.id] = m.name; return a }, {})
     const teamNames = teams.reduce((a, t) => { a[t.id] = (t.taskName && t.taskName !== '' ? t.taskName : null) || t.name || t.id; return a }, {})
-    // 인재 유형 간단 분류
-    const memberTypes = members.reduce((a, m) => {
-      const scores = Object.values(skillMatrix[m.id] ?? {}).filter(v => v > 0)
-      if (!scores.length) { a[m.id] = 'generalist'; return a }
-      const sorted = [...scores].sort((x, y) => y - x)
-      const top2Avg = sorted.slice(0, 2).reduce((s, v) => s + v, 0) / Math.min(2, sorted.length)
-      const restAvg = sorted.slice(2).length ? sorted.slice(2).reduce((s, v) => s + v, 0) / sorted.slice(2).length : 0
-      if (top2Avg >= 2 * (restAvg || 1)) a[m.id] = 'specialist'
-      else { const mean = scores.reduce((s, v) => s + v, 0) / scores.length; const std = Math.sqrt(scores.reduce((s, v) => s + (v - mean) ** 2, 0) / scores.length); a[m.id] = std < 0.8 ? 'generalist' : 't_shaped' }
+    // 인재 유형 간단 분류 (std 기반, 중앙값 기준)
+    const talentRows = members.map(m => {
+      const levels = Object.values(skillMatrix[m.id] ?? {}).filter(v => v > 0)
+      const avg = levels.length ? levels.reduce((s, v) => s + v, 0) / levels.length : 0
+      const std = levels.length > 1 ? Math.sqrt(levels.reduce((s, v) => s + (v - avg) ** 2, 0) / levels.length) : 0
+      return { id: m.id, n_skills: levels.length, std }
+    })
+    const medSkills = [...talentRows].map(r => r.n_skills).sort((a, b) => a - b)[Math.floor(talentRows.length / 2)] ?? 0
+    const medStd = [...talentRows].map(r => r.std).sort((a, b) => a - b)[Math.floor(talentRows.length / 2)] ?? 0
+    const memberTypes = talentRows.reduce((a, r) => {
+      if (!r.n_skills) { a[r.id] = '혼합형'; return a }
+      if (r.n_skills <= medSkills && r.std >= medStd) a[r.id] = '집중형'
+      else if (r.n_skills > medSkills && r.std < medStd) a[r.id] = '제너럴리스트형'
+      else a[r.id] = '혼합형'
       return a
     }, {})
 

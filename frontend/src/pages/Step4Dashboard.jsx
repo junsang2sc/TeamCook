@@ -5,7 +5,6 @@ import Navbar from '../components/layout/Navbar'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import useStore from '../store/useStore'
-import { mockPlacementResult } from '../api/mock'
 import { saveToArchive } from '../utils/archive'
 
 const getTeamLabel = (teamId, teams, teamNamesMap) => {
@@ -24,7 +23,15 @@ export default function Step4Dashboard() {
   const store = useStore()
   const { placementResult, placementType, setCurrentStep, skillMatrix, skills, teams, members, conditions, analysisResult, placementMode, currentTeams, currentAssignment, surplusMembers } = store
   const isRe = placementType === 're'
-  const data = placementResult || mockPlacementResult
+  if (!placementResult) return (
+    <div className="min-h-screen bg-canvas flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <p className="text-body">배치 결과가 없습니다. 3단계부터 다시 시작해주세요.</p>
+        <Button variant="outline" onClick={() => navigate('/step/3')}>← 조건 설정으로</Button>
+      </div>
+    </div>
+  )
+  const data = placementResult
   const memberMap = Object.fromEntries((members || []).map(m => [m.id, m]))
 
   // 재배치: changes가 없으면 surplus 멤버 기준으로 직접 계산

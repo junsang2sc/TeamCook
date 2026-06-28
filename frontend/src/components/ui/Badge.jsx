@@ -9,6 +9,8 @@ export default function Badge({ children, variant = 'neutral', className = '' })
     amber:      'bg-accent-yellow-tint text-accent-yellow-dark border border-accent-yellow/60',
     common:     'bg-primary-tint text-primary-dark border border-primary/30',
     mint:       'bg-primary-tint text-primary-dark border border-primary/30',
+    coral:      'bg-accent-coral-tint text-accent-coral-dark border border-accent-coral/40',
+    yellow:     'bg-accent-yellow-tint text-accent-yellow-dark border border-accent-yellow/60',
     magenta:    'bg-accent-coral-tint text-accent-coral-dark border border-accent-coral/40',
     red:        'bg-[#fee2e2] text-[#dc2626] border border-[#dc2626]/20',
   }

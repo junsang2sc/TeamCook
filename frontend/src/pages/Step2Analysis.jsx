@@ -12,17 +12,14 @@ import { analyzeEda, analyzeFit, getPlacementPhase1, getReplacementPhase1, getTF
 
 // ── 색상 (DESIGN.md) ─────────────────────────────────────────────────────────
 const C = {
-  primary: '#2ECC87',
-  amber:   '#FABF4B',
-  coral:   '#E05C5C',
-  blue:    '#7A9CC6',
-  green:   '#6DBF8A',
-  purple:  '#8E44AD',
-  ink:     '#1A1A1A',
-  body:    '#3f6856',
-  hairline:'#C2EAD8',
-  canvas:  '#FAFBFC',
-  talentColors: { '전문가형': '#4D9EED', '제너럴리스트형': '#E05C5C', '혼합형': '#FABF4B' },
+  primary:  '#2ECC87',   // --color-primary
+  amber:    '#FFE586',   // --color-accent-yellow
+  coral:    '#FFABB5',   // --color-accent-coral
+  ink:      '#1A1A1A',   // --color-ink
+  body:     '#6B7B8F',   // --color-body
+  hairline: '#C2EAD8',   // --color-hairline
+  canvas:   '#FAFBFC',   // --color-canvas
+  talentColors: { '집중형': '#2ECC87', '제너럴리스트형': '#FFABB5', '혼합형': '#FFE586' },
 }
 
 const LOADING_STEPS = [
@@ -245,17 +242,22 @@ export default function Step2Analysis() {
           }
         }
         const talent_types = {}
-        for (const m of allMembers) {
+        const talentRows = allMembers.map(m => {
           const levels = skills.map(s => skillMatrix[m.id]?.[s.id] ?? 0).filter(v => v > 0)
-          if (!levels.length) { talent_types[m.id] = 'generalist'; continue }
-          const sorted = [...levels].sort((a, b) => b - a)
-          const top2avg = sorted.slice(0, 2).reduce((a, b) => a + b, 0) / Math.min(2, sorted.length)
-          const restAvg = sorted.slice(2).length ? sorted.slice(2).reduce((a, b) => a + b, 0) / sorted.slice(2).length : 0
-          const mean = levels.reduce((a, b) => a + b, 0) / levels.length
-          const std = Math.sqrt(levels.reduce((s, v) => s + (v - mean) ** 2, 0) / levels.length)
-          if (top2avg >= 2 * (restAvg || 1)) talent_types[m.id] = 'specialist'
-          else if (std < 0.8) talent_types[m.id] = 'generalist'
-          else talent_types[m.id] = 't_shaped'
+          const avg = levels.length ? levels.reduce((a, b) => a + b, 0) / levels.length : 0
+          const std = levels.length > 1 ? Math.sqrt(levels.reduce((s, v) => s + (v - avg) ** 2, 0) / levels.length) : 0
+          return { id: m.id, n_skills: levels.length, avg_level: avg, level_std: std }
+        })
+        const sortedSkills = [...talentRows].map(r => r.n_skills).sort((a, b) => a - b)
+        const sortedStd = [...talentRows].map(r => r.level_std).sort((a, b) => a - b)
+        const medSkills = sortedSkills[Math.floor(sortedSkills.length / 2)] ?? 0
+        const medStd = sortedStd[Math.floor(sortedStd.length / 2)] ?? 0
+        for (const r of talentRows) {
+          if (!r.n_skills) { talent_types[r.id] = { talent_type: '혼합형', skill_count: 0, avg_level: 0, level_std: 0 }; continue }
+          let type = '혼합형'
+          if (r.n_skills <= medSkills && r.level_std >= medStd) type = '집중형'
+          else if (r.n_skills > medSkills && r.level_std < medStd) type = '제너럴리스트형'
+          talent_types[r.id] = { talent_type: type, skill_count: r.n_skills, avg_level: r.avg_level, level_std: r.level_std }
         }
 
         const mockRes = { idf, kss, difficulty, talent_types }
@@ -686,8 +688,13 @@ function QuickBtn({ label, onClick, variant = 'default' }) {
 // ────────────────────────────────────────────────────────────────────────────
 // 1/4  인재 유형
 // ────────────────────────────────────────────────────────────────────────────
+function normalizeTalentType(v) {
+  if (typeof v === 'string') return { talent_type: v, skill_count: 0, avg_level: 0, level_std: 0 }
+  return v
+}
+
 function TalentPie({ talentTypes }) {
-  const entries = Object.values(talentTypes)
+  const entries = Object.values(talentTypes).map(normalizeTalentType)
   const counts = entries.reduce((acc, e) => {
     acc[e.talent_type] = (acc[e.talent_type] || 0) + 1
     return acc
@@ -706,7 +713,7 @@ function TalentPie({ talentTypes }) {
               {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
             </Pie>
             <Tooltip formatter={(v, n) => [`${v}명`, n]} />
-            <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 13 }} />
+            <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 13, color: '#6B7B8F' }} />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -715,7 +722,7 @@ function TalentPie({ talentTypes }) {
 }
 
 function TalentInsight({ talentTypes, memberNameMap }) {
-  const entries = Object.entries(talentTypes).map(([id, v]) => ({ id, ...v }))
+  const entries = Object.entries(talentTypes).map(([id, v]) => ({ id, ...normalizeTalentType(v) }))
   const counts = entries.reduce((acc, e) => {
     acc[e.talent_type] = (acc[e.talent_type] || 0) + 1
     return acc
@@ -748,9 +755,12 @@ function TalentInsight({ talentTypes, memberNameMap }) {
             </div>
           ))}
         </div>
+        {scatterData.every(d => d.x == null || d.y == null) ? (
+          <p className="text-xs text-body text-center py-6">스킬 레벨 데이터가 없어 차트를 표시할 수 없습니다.</p>
+        ) : (
         <ResponsiveContainer width="100%" height={180}>
           <ScatterChart margin={{ left: 4, right: 12, top: 4, bottom: 32 }}>
-            <XAxis dataKey="x" name="보유스킬수" tick={{ fontSize: 10 }}
+            <XAxis dataKey="x" type="number" name="보유스킬수" tick={{ fontSize: 10 }} allowDecimals={false}
               label={{ value: '보유 스킬 수', position: 'insideBottom', offset: -18, fontSize: 10 }} />
             <YAxis dataKey="y" name="레벨표준편차" tick={{ fontSize: 10 }} width={32} />
             <Tooltip content={({ payload }) => {
@@ -770,6 +780,7 @@ function TalentInsight({ talentTypes, memberNameMap }) {
             ))}
           </ScatterChart>
         </ResponsiveContainer>
+        )}
       </div>
     </div>
   )
@@ -1040,10 +1051,10 @@ function DiffSummary({ difficulty }) {
   const easy = entries.filter(e => e.difficulty === 0).length    // 전원 lv4+
 
   const buckets = [
-    { label: '매우 어려움', desc: 'lv4 이상 비율 0~30%', count: entries.filter(e => e.difficulty >= 0.7).length, color: C.coral },
-    { label: '보통',        desc: 'lv4 이상 비율 30~70%', count: entries.filter(e => e.difficulty > 0.3 && e.difficulty < 0.7).length, color: C.amber },
-    { label: '쉬움',        desc: 'lv4 이상 비율 70%+',   count: entries.filter(e => e.difficulty <= 0.3 && e.holders > 0).length, color: C.primary },
-    { label: '보유자 없음', desc: '미측정',             count: entries.filter(e => e.holders === 0).length, color: C.hairline },
+    { label: '매우 어려움', desc: 'lv4 이상 비율 0~30%', count: entries.filter(e => e.difficulty >= 0.7).length, color: '#FFABB5' },   // accent-coral
+    { label: '보통',        desc: 'lv4 이상 비율 30~70%', count: entries.filter(e => e.difficulty > 0.3 && e.difficulty < 0.7).length, color: '#FFE586' }, // accent-yellow
+    { label: '쉬움',        desc: 'lv4 이상 비율 70%+',   count: entries.filter(e => e.difficulty <= 0.3 && e.holders > 0).length, color: '#2ECC87' },   // primary
+    { label: '보유자 없음', desc: '미측정',             count: entries.filter(e => e.holders === 0).length, color: '#C2EAD8' },  // hairline
   ]
 
   return (
@@ -1058,7 +1069,7 @@ function DiffSummary({ difficulty }) {
           <div className="text-sm text-body">(lv4+ 미달 비율)</div>
         </div>
         <div className="rounded-lg p-4 bg-canvas text-center">
-          <div className="text-2xl font-mono font-semibold" style={{ color: C.coral }}>{hard}</div>
+          <div className="text-2xl font-mono font-semibold" style={{ color: '#8B3A42' }}>{hard}</div>
           <div className="text-sm text-body mt-1">어려운 스킬</div>
           <div className="text-sm text-body">(lv4 이상 비율 30% 미만)</div>
         </div>

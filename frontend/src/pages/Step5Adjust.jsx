@@ -4,8 +4,6 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import Navbar from '../components/layout/Navbar'
 import Button from '../components/ui/Button'
 import useStore from '../store/useStore'
-import { mockPlacementResult } from '../api/mock'
-
 export default function Step5Adjust() {
   const navigate = useNavigate()
   const {
@@ -19,15 +17,15 @@ export default function Step5Adjust() {
     placementType,
   } = useStore()
 
-  const base = placementResult || mockPlacementResult
-  const [board, setBoard] = useState(adjustedPlacement || base.placement || {})
+  const base = placementResult
+  const [board, setBoard] = useState(adjustedPlacement || base?.placement || {})
   const [search, setSearch] = useState('')
   const [selectedMember, setSelectedMember] = useState(null) // mid
   const [highlightMid, setHighlightMid] = useState(null)
 
   useEffect(() => {
-    setBoard(adjustedPlacement || base.placement || {})
-  }, [adjustedPlacement, base.placement])
+    setBoard(adjustedPlacement || base?.placement || {})
+  }, [adjustedPlacement, base?.placement])
 
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') setSelectedMember(null) }
@@ -126,8 +124,17 @@ export default function Step5Adjust() {
 
   const handleReset = () => {
     resetAdjustment()
-    setBoard(base.placement || {})
+    setBoard(base?.placement || {})
   }
+
+  if (!base) return (
+    <div className="min-h-screen bg-canvas flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <p className="text-body">배치 결과가 없습니다. 3단계부터 다시 시작해주세요.</p>
+        <Button variant="outline" onClick={() => navigate('/step/3')}>← 조건 설정으로</Button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-canvas">
