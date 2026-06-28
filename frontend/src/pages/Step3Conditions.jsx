@@ -427,11 +427,11 @@ export default function Step3Conditions() {
                 <p className="text-xs font-mono text-body uppercase tracking-wider">배치 옵션</p>
                 <div className="flex gap-1.5">
                   <button
-                    onClick={() => setConditions({ ...conditions, genderBalance: true, seniorityBalance: true, experienceBalance: true })}
+                    onClick={() => setConditions({ ...conditions, genderBalance: true, seniorityBalance: true })}
                     className="text-[11px] font-mono text-body hover:text-ink transition-colors px-1.5 py-0.5 border border-hairline rounded-sm"
                   >전체 선택</button>
                   <button
-                    onClick={() => setConditions({ ...conditions, genderBalance: false, seniorityBalance: false, experienceBalance: false })}
+                    onClick={() => setConditions({ ...conditions, genderBalance: false, seniorityBalance: false })}
                     className="text-[11px] font-mono text-body hover:text-ink transition-colors px-1.5 py-0.5 border border-hairline rounded-sm"
                   >전체 해제</button>
                 </div>
@@ -439,7 +439,6 @@ export default function Step3Conditions() {
               <div className="space-y-2.5">
                 <OptionCheck label="성별 균형" checked={conditions.genderBalance} onChange={v => set('genderBalance', v)} />
                 <OptionCheck label="직위 조화" checked={conditions.seniorityBalance} onChange={v => set('seniorityBalance', v)} />
-                <OptionCheck label="연차 조화" checked={conditions.experienceBalance} onChange={v => set('experienceBalance', v)} />
               </div>
               {placementType !== 're' && <div className="mt-3">
                 <div className="flex items-center gap-2">

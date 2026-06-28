@@ -103,7 +103,7 @@ export default function Step2Analysis() {
           const defaultVal = Math.max(1, Math.round(tfTarget * teamSize / totalMembers))
           return [t.id, defaultVal]
         }
-        return [t.id, 5]
+        return [t.id, t.extraCapacity != null ? t.extraCapacity : 5]
       })
     )
   })
