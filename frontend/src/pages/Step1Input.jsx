@@ -15,22 +15,22 @@ const CONFIG = {
   new: {
     label: '신규배치',
     badgeVariant: 'mint',
-    filename: 'TeamCook_신규배치_v3.xlsx',
-    downloadPath: '/templates/TeamCook_신규배치_v3.xlsx',
+    filename: 'TeamCook_신규배치_템플릿.xlsx',
+    downloadPath: '/templates/TeamCook_신규배치_템플릿.xlsx',
     desc: '구성원 스킬 데이터와 팀 정보를 엑셀 템플릿에 입력한 후 업로드해주세요.',
   },
   re: {
     label: '재배치',
     badgeVariant: 'periwinkle',
-    filename: 'TeamCook_재배치_v3.xlsx',
-    downloadPath: '/templates/TeamCook_재배치_v3.xlsx',
+    filename: 'TeamCook_재배치_템플릿.xlsx',
+    downloadPath: '/templates/TeamCook_재배치_템플릿.xlsx',
     desc: '구성원 스킬 데이터, 기존 팀 현황, 배치 현황을 입력한 후 업로드해주세요.',
   },
   tf: {
     label: 'TF 구성',
     badgeVariant: 'orange',
-    filename: 'TeamCook_TF구성_v3.xlsx',
-    downloadPath: '/templates/TeamCook_TF구성_v3.xlsx',
+    filename: 'TeamCook_TF구성_템플릿.xlsx',
+    downloadPath: '/templates/TeamCook_TF구성_템플릿.xlsx',
     desc: '구성원 스킬 데이터, 현재 팀 배치 현황, TF 요구 스킬을 입력한 후 업로드해주세요.',
   },
 }
