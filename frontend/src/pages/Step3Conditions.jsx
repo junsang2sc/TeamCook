@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '../components/layout/Navbar'
 import Button from '../components/ui/Button'
+import WhiskLoader from '../components/ui/WhiskLoader'
 import Toggle from '../components/ui/Toggle'
 import Slider from '../components/ui/Slider'
 import useStore from '../store/useStore'
@@ -35,9 +36,7 @@ export default function Step3Conditions() {
   useEffect(() => { if (!selectedMember && members.length) setSelectedMember(members[0].id) }, [members])
   useEffect(() => { if (teamSize === null && members.length > 0 && teams.length > 0) setTeamSize(Math.ceil(members.length / teams.length)) }, [members, teams])
 
-  const [nlInput, setNlInput] = useState('')
-  const [nlParsed, setNlParsed] = useState(null)
-  const [constraints, setConstraints] = useState([])
+  const [isGenerating, setIsGenerating] = useState(false)
 
   const minTeamSize = members.length > 0 && teams.length > 0
     ? Math.ceil(members.length / teams.length)
@@ -59,10 +58,6 @@ export default function Step3Conditions() {
 
   const setPerTeam = (teamId, val) =>
     setPerTeamSize(prev => ({ ...prev, [teamId]: Math.max(1, val) }))
-
-  const [educationConsider, setEducationConsider] = useState(false)
-  const [locationConsider, setLocationConsider] = useState(false)
-  const [priorityWeight, setPriorityWeight] = useState(false)
 
   const set = (key, val) => setConditions({ ...conditions, [key]: val })
 
@@ -197,6 +192,7 @@ export default function Step3Conditions() {
   }
 
   const handleGenerate = async () => {
+    setIsGenerating(true)
     // ── 재배치 ───────────────────────────────────────────────────────────────
     if (placementType === 're') {
       let result
@@ -364,6 +360,21 @@ export default function Step3Conditions() {
     return { members: [], teams: [], scores: {} }
   })()
 
+  if (isGenerating) {
+    return (
+      <div className="min-h-screen bg-canvas flex flex-col">
+        <Navbar currentStep={3} />
+        <div className="flex-1 flex flex-col items-center justify-center gap-8" style={{ marginTop: '69px' }}>
+          <WhiskLoader fps={12} size={160} />
+          <div className="text-center space-y-1.5">
+            <p className="text-sm font-medium text-ink">최적 배치 계산 중...</p>
+            <p className="text-xs text-body">ILP 알고리즘으로 최적 조합을 탐색하고 있습니다</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-canvas">
       <Navbar currentStep={3} />
@@ -372,15 +383,21 @@ export default function Step3Conditions() {
         {/* 메인: 적합도 매트릭스 */}
         <main className="flex-1 overflow-auto p-6 space-y-6" style={{ marginRight: '300px' }}>
           <Section title="적합도 매트릭스">
-            <ViewToggle view={matrixView} onChange={setMatrixView} />
-            {matrixView === 'heatmap' && (
-              <HeatmapView
-                data={fitnessData}
-                onCellClick={(teamId, memberId) => { setSelectedTeam(teamId); setSelectedMember(memberId); setMatrixView('task') }}
-              />
+            {placementType === 'tf' ? (
+              <TFGridView data={fitnessData} tfTeamId={tfId || 'tf'} />
+            ) : (
+              <>
+                <ViewToggle view={matrixView} onChange={setMatrixView} />
+                {matrixView === 'heatmap' && (
+                  <HeatmapView
+                    data={fitnessData}
+                    onCellClick={(teamId, memberId) => { setSelectedTeam(teamId); setSelectedMember(memberId); setMatrixView('task') }}
+                  />
+                )}
+                {matrixView === 'task' && <TaskView data={fitnessData} selectedTeam={selectedTeam} onSelectTeam={setSelectedTeam} />}
+                {matrixView === 'member' && <MemberView data={fitnessData} selectedMember={selectedMember} onSelectMember={setSelectedMember} />}
+              </>
             )}
-            {matrixView === 'task' && <TaskView data={fitnessData} selectedTeam={selectedTeam} onSelectTeam={setSelectedTeam} />}
-            {matrixView === 'member' && <MemberView data={fitnessData} selectedMember={selectedMember} onSelectMember={setSelectedMember} />}
           </Section>
 
           <div className="flex justify-start pt-2">
@@ -401,19 +418,11 @@ export default function Step3Conditions() {
                 <p className="text-xs font-mono text-body uppercase tracking-wider">배치 옵션</p>
                 <div className="flex gap-1.5">
                   <button
-                    onClick={() => {
-                      set('genderBalance', true); set('seniorityBalance', true)
-                      set('experienceBalance', true); setPriorityWeight(true)
-                      setEducationConsider(true); setLocationConsider(true)
-                    }}
+                    onClick={() => { set('genderBalance', true); set('seniorityBalance', true); set('experienceBalance', true) }}
                     className="text-[11px] font-mono text-body hover:text-ink transition-colors px-1.5 py-0.5 border border-hairline rounded-sm"
                   >전체 선택</button>
                   <button
-                    onClick={() => {
-                      set('genderBalance', false); set('seniorityBalance', false)
-                      set('experienceBalance', false); setPriorityWeight(false)
-                      setEducationConsider(false); setLocationConsider(false)
-                    }}
+                    onClick={() => { set('genderBalance', false); set('seniorityBalance', false); set('experienceBalance', false) }}
                     className="text-[11px] font-mono text-body hover:text-ink transition-colors px-1.5 py-0.5 border border-hairline rounded-sm"
                   >전체 해제</button>
                 </div>
@@ -422,9 +431,6 @@ export default function Step3Conditions() {
                 <OptionCheck label="성별 균형" checked={conditions.genderBalance} onChange={v => set('genderBalance', v)} />
                 <OptionCheck label="직위 조화" checked={conditions.seniorityBalance} onChange={v => set('seniorityBalance', v)} />
                 <OptionCheck label="연차 조화" checked={conditions.experienceBalance} onChange={v => set('experienceBalance', v)} />
-                <OptionCheck label="학력 고려" checked={educationConsider} onChange={setEducationConsider} />
-                <OptionCheck label="근무지 고려" checked={locationConsider} onChange={setLocationConsider} />
-                <OptionCheck label="프로젝트 중요도 반영" checked={priorityWeight} onChange={setPriorityWeight} />
               </div>
               <div className="mt-3">
                 <div className="flex items-center gap-2">
@@ -545,38 +551,6 @@ export default function Step3Conditions() {
               </div>
             </div>
 
-            {/* 자체 제약 조건 */}
-            <div>
-              <p className="text-xs font-mono text-body uppercase tracking-wider mb-3">자체 제약 조건</p>
-              <textarea
-                value={nlInput}
-                onChange={e => setNlInput(e.target.value)}
-                placeholder={`예:\n"부장은 팀당 1명씩"\n"001과 047은 다른 팀"`}
-                className="w-full h-20 border border-hairline rounded-md px-3 py-2 text-sm text-ink resize-none focus:outline-none focus:border-primary"
-              />
-              <Button variant="outline" size="sm" className="mt-2 w-full" onClick={handleParseNL}>해석하기</Button>
-
-              {nlParsed && (
-                <div className="mt-3 p-3 bg-primary-tint border border-primary/20 rounded-md">
-                  <p className="text-xs text-primary-dark mb-2">{nlParsed.text}</p>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={handleAddConstraint}>확인</Button>
-                    <Button variant="outline" size="sm" onClick={() => { setNlParsed(null); setNlInput('') }}>취소</Button>
-                  </div>
-                </div>
-              )}
-
-              {constraints.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {constraints.map((c, i) => (
-                    <span key={i} className="flex items-center gap-1 px-2 py-1 bg-muted border border-hairline rounded-full text-xs text-ink">
-                      {c.text}
-                      <button onClick={() => setConstraints(constraints.filter((_, j) => j !== i))} className="ml-0.5 text-body hover:text-accent-coral">×</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
 
           <div className="p-5 border-t border-hairline">
@@ -732,6 +706,34 @@ function MemberView({ data, selectedMember, onSelectMember }) {
           <Bar dataKey="score" fill="#2ECC87" radius={[2, 2, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  )
+}
+
+// TF 전용: 전체 구성원 × TF 적합도 그리드
+function TFGridView({ data, tfTeamId }) {
+  const sorted = [...data.members].sort(
+    (a, b) => (data.scores[b.id]?.[tfTeamId] ?? 0) - (data.scores[a.id]?.[tfTeamId] ?? 0)
+  )
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {sorted.map((m, i) => {
+        const score = data.scores[m.id]?.[tfTeamId] ?? 0
+        const { bg, text } = scoreToColor(score)
+        return (
+          <div key={m.id} className="flex items-center gap-3 p-3 border border-hairline rounded-sm">
+            <span className="text-xs text-body w-5 shrink-0">{i + 1}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-ink truncate">{m.name || m.id}</div>
+              {m.name && m.name !== m.id && <div className="text-[10px] text-body font-mono">{m.id}</div>}
+            </div>
+            <div className="shrink-0 px-2.5 py-1 rounded-sm text-xs font-mono font-semibold"
+              style={{ backgroundColor: bg, color: text }}>
+              {Math.round(score * 100)}%
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -230,7 +230,12 @@ function SummaryBar({ data, fulfillment, warningTeamIds, showOnlyWarning, hasTea
   return (
     <div className="bg-surface border-b border-hairline px-8 flex items-center gap-8" style={{ height: '64px' }}>
       <div>
-        <div className="text-xs text-body mb-0.5">최소 레벨 충족률</div>
+        <div className="text-xs text-body mb-0.5">
+          최소 레벨 충족률
+          {conditions?.minSkillLevel != null && (
+            <span className="ml-1.5 font-mono text-[10px] text-body">(하한 {conditions.minSkillLevel})</span>
+          )}
+        </div>
         <div className="text-2xl font-bold text-primary">{fulfillment}%</div>
       </div>
       <div className="flex-1">

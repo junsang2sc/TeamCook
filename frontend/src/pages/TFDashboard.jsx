@@ -15,7 +15,7 @@ export default function TFDashboard() {
   const {
     members, skills, skillMatrix, currentTeams, currentAssignment,
     tfId, tfName, tfProject, tfRequiredSkills,
-    analysisResult, setCurrentStep,
+    analysisResult, setCurrentStep, setPlacementResult,
     tfResult: storedTfResult,
   } = useStore()
 
@@ -99,6 +99,17 @@ export default function TFDashboard() {
           <Badge variant={allTeamsSafe ? 'mint' : 'red'}>{allTeamsSafe ? '없음' : '발생'}</Badge>
         </div>
         <div className="ml-auto flex gap-2">
+          <Button variant="ghost" size="sm" onClick={() => {
+            // TF 결과를 placement 형태로 변환해 Step5에서 수동 조정 가능하게
+            const tfTeamId = tfId || 'tf'
+            setPlacementResult({
+              placement: { [tfTeamId]: tfResult.tf_members },
+              scores: tfResult.scores || {},
+              warnings: tfResult.warnings || [],
+            })
+            setCurrentStep(5)
+            navigate('/step/5')
+          }}>수동 조정하기</Button>
           <Button variant="ghost" size="sm" onClick={exportCSV}>CSV 내보내기</Button>
         </div>
       </div>
@@ -208,8 +219,8 @@ export default function TFDashboard() {
                   const accent = impact.safe ? '#2ECC87' : '#FFABB5'
 
                   return (
-                    <div key={teamId} className="border border-[rgba(0,0,0,0.08)] rounded-lg overflow-hidden bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
-                      style={{ borderLeft: `3px solid ${accent}` }}>
+                    <div key={teamId} className="rounded-lg overflow-hidden bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                      style={{ border: `1.5px solid ${accent}` }}>
 
                       {/* 헤더 */}
                       <div className="flex items-center gap-3 px-5 py-3.5 border-b border-hairline">
