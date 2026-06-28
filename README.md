@@ -109,16 +109,18 @@ Step 5  수동 조정 (해체 팀 자동 필터링 포함)
 
 ## 계산 공식
 
-### 1. 코사인 유사도 기반 배치 적합도
+### 1. ILP(Integer Linear Programming) 기반 배치 적합도
 
-구성원 스킬 벡터와 과제 필수 스킬 벡터의 유사도로 배치 적합도를 계산합니다.
+fit_score.py에서 계산된 적합도 매트릭스(IDF·KSS·Difficulty 가중)를 입력으로 2단계 ILP를 실행합니다.
 
 ```
-member_vector  = [skill_level_1, skill_level_2, ..., skill_level_n]
-task_vector    = [importance_or_1_if_required, 0, ...]   # 중요도 가중치 반영
+# 1차 ILP: 순수 적합도 최대화 (소프트 제약 없이)
+#   → 1차 결과로 AVG_LEVEL 슬라이더 범위 자동 산출 (phase1 엔드포인트)
 
-fitness = cosine_similarity(member_vector, task_vector)
-        = (Σ member_i × task_i) / (‖member‖ × ‖task‖)
+# λ 자동계산: LAM_COV / GENDER / RANK → 데이터 기반 자동 산출 (하드코딩 제거)
+
+# 2차 ILP: 소프트 제약(스킬 커버리지, 성별, 직급 균형) + 적합도 최적화
+# 솔버: PuLP + HiGHS / CBC
 ```
 
 ### 2. 차출 가능 여부 검증 (재배치 / TF)
@@ -188,15 +190,15 @@ shortage : supply < demand  →  배치 불가 위험
 | 영역 | 내용 |
 |---|---|
 | 프론트엔드 초기화 | React + Vite + Tailwind v4 + Zustand + Recharts + @hello-pangea/dnd |
-| 디자인 시스템 | DESIGN.md 기반 CSS 커스텀 토큰, NanumSquareNeo 폰트 |
+| 디자인 시스템 | DESIGN.md 기반 CSS 커스텀 토큰, SUITE 폰트 (민트그린 #2ECC87 / 코럴 #FFABB5 / 옐로우 #FFE586) |
 | 전역 상태 관리 | Zustand + LocalStorage 퍼시스트 |
 | API 레이어 | 백엔드 연동 함수 + mock 데이터 fallback |
 | 공통 UI | Button, Badge, Toggle, Slider, Navbar, MemberPopup |
 | 랜딩 페이지 | 헤드카피, 배치 유형 선택 카드(hover 펼침), 3단계 플로우, 맥락 태그, 재방문 팝업 |
 | Step 1 | 스킬 목록, 구성원 입력, 스킬 매트릭스, 팀/과제 정보, 엑셀 업로드 파서 |
-| Step 2 | WhiskLoader 애니메이션, 5종 인사이트 카드 (탭 필터 포함) |
-| Step 3 | 토글/슬라이더 조건 설정, 배치 방식별 추가 조건 |
-| Step 4 | 팀 카드, 스킬 커버리지 바, 레이더 차트, AI 코멘트 패널, 변경 전/후 비교 탭, CSV 내보내기 |
+| Step 2 | WhiskLoader 애니메이션, 인사이트 카드 (IDF 희귀도 / KSS SPOF / 난이도 / 인재유형), 차출허용팀 설정, 어려운 스킬 일괄 선택 |
+| Step 3 | 토글/슬라이더 조건 설정, 팀당 인원수 세부 조정 팝업, 배치 방식별 추가 조건 (연차 조화 제거) |
+| Step 4 | 팀 카드 4열 + 구성원 패널 + 배치 조정, 재배치 인원 현황 패널, 기존 팀 영향도(전/후), CSV 내보내기 |
 | Step 5 | 드래그앤드롭, 조건 위반 경고, Undo, 재계산, 구성원 스킬 팝업 |
 | 재배치 플로우 | 차출 가능 검증, 기존 팀 리스크 카드, 해체 팀 자동 필터 |
 | TF 구성 플로우 | TFDashboard, 차출 전/후 팀 영향도, mock TF 결과 |
@@ -207,7 +209,6 @@ shortage : supply < demand  →  배치 불가 위험
 | 항목 | 우선순위 |
 |---|---|
 | 실제 엑셀 템플릿 파일 생성 및 다운로드 연결 | Should |
-| 백엔드 FastAPI 서버 실제 연동 | Should |
 | Claude API 에이전트 코멘트 (비동기) | Should |
 | PDF 내보내기 | Could |
 | Supabase 링크 공유 | Could |
@@ -246,25 +247,25 @@ teamfit/
 │   └── public/
 │       ├── TeamCooK Logo.png
 │       ├── TeamCook Icon.png
-│       ├── fonts/               NanumSquareNeo (bRg / cBd / dEb / eHv)
+│       ├── fonts/               SUITE (Light / Regular / Medium / SemiBold / Bold / ExtraBold)
+│       ├── pot cover icon.svg
 │       ├── loading/             Loading 1.png ~ Loading 12.png (WhiskLoader 프레임)
 │       └── templates/           (예정) 엑셀 템플릿 다운로드
 │
-└── backend/                     FastAPI 앱 (예정)
+└── backend/                     FastAPI 앱
     ├── main.py
     ├── routers/
-    │   ├── analyze.py           POST /api/analyze
-    │   ├── placement.py         POST /api/placement
+    │   ├── analyze.py           POST /api/analyze/eda, /api/analyze/fit
+    │   ├── placement.py         POST /api/placement, /api/placement/phase1
     │   ├── replacement.py       POST /api/replacement
-    │   ├── validate.py          POST /api/validate
-    │   ├── recompute.py         POST /api/recompute
-    │   ├── comment.py           POST /api/comment  (Claude API)
-    │   └── share.py             POST /api/share    (Supabase)
-    └── services/
-        ├── analysis.py          희귀도 / 인재유형 / SPOF 분석
-        ├── placement.py         신규배치 알고리즘 (코사인 유사도)
-        ├── replacement.py       재배치 알고리즘 (차출 검증 + 변경 최소화)
-        └── llm.py               Claude API 연동 (claude-sonnet-4-6)
+    │   └── tf.py                POST /api/tf
+    ├── services/
+    │   ├── fit_score.py         EDA 분석 (IDF / KSS / 난이도 / 인재유형 / fit matrix)
+    │   ├── placement.py         신규배치 ILP (PuLP + HiGHS/CBC)
+    │   ├── replacement.py       재배치 ILP (기존팀 스킬 유지 제약)
+    │   └── tf.py                TF 구성 ILP (원팀 공백 방지 제약)
+    ├── notebooks/               알고리즘 개발용 Jupyter 노트북
+    └── requirements.txt
 ```
 
 ### 기술 스택
